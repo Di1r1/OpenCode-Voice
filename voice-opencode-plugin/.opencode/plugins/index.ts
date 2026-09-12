@@ -1,8 +1,5 @@
 import type { Plugin, Hooks } from "@opencode-ai/plugin"
 
-// eslint-disable-next-line no-console
-console.log("[voice] MODULE LOADED")
-
 // NOTE: config and constants are imported dynamically inside the plugin function.
 // OpenCode's legacy plugin loader (getLegacyPlugins) iterates over a module's exports
 // and throws "Plugin export is not a function" for any non-function export, so we
@@ -22,8 +19,6 @@ console.log("[voice] MODULE LOADED")
  * как будто его напечатали вручную.
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
-  // eslint-disable-next-line no-console
-  console.log("[voice] PLUGIN INIT")
   const { config, STT_BACKENDS, STT_LANGUAGES, DEFAULTS } = await import("../../src/lib/config")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
@@ -57,20 +52,17 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
   const hooks: Hooks = {
     "command.execute.before": async (input, output) => {
-      // eslint-disable-next-line no-console
-      console.log("[voice] hook fired", input.command, "parts:", output.parts.length)
       await log("hook fired", { command: input.command, parts: output.parts.length })
       const cmd = input.command
       if (cmd !== "voice" && cmd !== "v") return
 
       // Suppress the markdown command template ($ARGUMENTS) so the LLM is not
-      // invoked for /voice subcommands — we handle them entirely in the plugin.
-      // OpenCode always calls the prompt function after this hook, so we
-      // replace parts with a no-op text part to avoid an empty/invalid prompt.
+      // invoked with the raw template for /voice subcommands — we handle them
+      // entirely in the plugin. OpenCode always calls the prompt function after
+      // this hook, so we replace parts with a single empty text part to keep the
+      // prompt valid (an empty parts array triggers a Google API error).
       output.parts.length = 0
       output.parts.push({ type: "text", text: "" })
-      // eslint-disable-next-line no-console
-      console.log("[voice] parts replaced, now:", output.parts.length)
       await log("parts replaced", { now: output.parts.length })
 
       const args = (input.arguments || "").trim()
