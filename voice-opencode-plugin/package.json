@@ -1,0 +1,19 @@
+{
+  "name": "opencode-voice",
+  "version": "0.1.0",
+  "description": "Voice control for OpenCode: speak, and your words are typed into the prompt",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "opencode --plugin ."
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.0.0",
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "keywords": ["opencode", "voice", "whisper", "speech-to-text"],
+  "license": "MIT"
+}

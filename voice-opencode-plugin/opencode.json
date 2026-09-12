@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./.opencode/plugins/index.ts"],
+  "agent": {
+    "voice-builder": {
+      "description": "Builds and extends the opencode-voice plugin (TypeScript, OpenCode plugin SDK, STT backends)",
+      "mode": "subagent",
+      "model": "opencode/gpt-5.1-codex",
+      "temperature": 0.2,
+      "permission": {
+        "edit": "allow",
+        "bash": "allow",
+        "read": "allow",
+        "skill": "allow"
+      }
+    },
+    "voice-stt": {
+      "description": "Sets up and validates speech-to-text backends for the opencode-voice plugin",
+      "mode": "subagent",
+      "model": "opencode/gpt-5.1-codex",
+      "temperature": 0.1,
+      "permission": {
+        "edit": "deny",
+        "bash": "allow",
+        "read": "allow",
+        "skill": "allow"
+      }
+    }
+  }
+}
