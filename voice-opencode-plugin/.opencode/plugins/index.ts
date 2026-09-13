@@ -7,6 +7,10 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
   }
 
+  const log = async (message: string, extra?: Record<string, unknown>) => {
+    try { await client.app.log({ body: { service: "voice", level: "info", message, extra } }) } catch {}
+  }
+
   const showToast = (message: string, variant: "success" | "error" | "info" = "info") => {
     try { client.tui.showToast({ body: { message, variant } }) } catch {}
   }
@@ -18,10 +22,13 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
   const hooks: Hooks = {
     "command.execute.before": async (input, output) => {
+      await log("hook fired", { command: input.command, parts: output.parts.length })
       const cmd = input.command
       if (cmd !== "voice" && cmd !== "v") return
+
       output.parts.length = 0
       output.parts.push({ type: "text", text: "" })
+      await log("parts replaced", { now: output.parts.length })
 
       const args = (input.arguments || "").trim()
       const parts = args.split(/\s+/).filter(Boolean)
