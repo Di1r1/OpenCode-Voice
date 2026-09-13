@@ -7,8 +7,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
   }
 
-  const log = async (message: string, extra?: Record<string, unknown>) => {
-    try { await client.app.log({ body: { service: "voice", level: "info", message, extra } }) } catch {}
+  const log = (message: string, extra?: Record<string, unknown>) => {
+    console.log(`[voice] ${message}`, extra ? JSON.stringify(extra) : "")
   }
 
   const showToast = (message: string, variant: "success" | "error" | "info" = "info") => {
