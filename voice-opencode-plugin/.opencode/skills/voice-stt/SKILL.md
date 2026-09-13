@@ -38,5 +38,6 @@ Use this skill when the user wants to configure, use, or troubleshoot the `openc
 ## Troubleshooting
 
 - If `/voice` hangs on recording: ensure `ffmpeg`, `arecord`, `sox`, or Python `sounddevice` is installed.
+- WSL2 note: `/dev/snd` is not available by design (`no soundcards`). Use `PULSE_SERVER=/mnt/wslg/PulseServer` with `libasound2-plugins` and mount `/mnt/wslg/`. Check `PULSE_SERVER` env instead of `/proc/asound/cards`.
 - If the api backend fails: verify `OPENAI_API_KEY` is set and the account has Whisper access.
 - If local backend fails: install one of whisper.cpp, `openai-whisper`, or `vosk`.

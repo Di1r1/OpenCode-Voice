@@ -31,4 +31,6 @@ export const config = {
   channels: Number(process.env.OPENCODE_VOICE_CHANNELS) || DEFAULTS.channels,
   bitsPerSample: Number(process.env.OPENCODE_VOICE_BITS_PER_SAMPLE) || DEFAULTS.bitsPerSample,
   pttKey: process.env.OPENCODE_VOICE_PTT_KEY || DEFAULTS.pttKey,
+  // WSL2 / PulseAudio: проверять PULSE_SERVER вместо /proc/asound/cards
+  pulseServer: process.env.PULSE_SERVER || "",
 }
