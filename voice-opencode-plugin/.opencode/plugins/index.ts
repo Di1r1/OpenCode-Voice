@@ -1,7 +1,7 @@
 import type { Plugin, Hooks } from "@opencode-ai/plugin"
+import { config, STT_BACKENDS, STT_LANGUAGES, DEFAULTS } from "../../src/lib/config"
 
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
-  const { config, STT_BACKENDS, STT_LANGUAGES, DEFAULTS } = await import("../../src/lib/config")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
