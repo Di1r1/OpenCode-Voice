@@ -52,7 +52,6 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
   const hooks: Hooks = {
     "command.execute.before": async (input, output) => {
-      await log("hook fired", { command: input.command, parts: output.parts.length })
       const cmd = input.command
       if (cmd !== "voice" && cmd !== "v") return
 
