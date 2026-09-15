@@ -65,7 +65,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       // prompt valid (an empty parts array triggers a Google API error).
       output.parts.length = 0
       // Part требует id/sessionID/messageID по типам, рантайм их проставляет сам.
-      output.parts.push({ type: "text", text: "" } as any)
+      output.parts.push({ type: "text", text: "\n" } as any)
       await log("parts replaced", { now: output.parts.length })
 
       const args = (input.arguments || "").trim()
