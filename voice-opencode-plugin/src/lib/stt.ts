@@ -55,7 +55,7 @@ async function transcribeApi(opts: { file: string; language: string; $: any }): 
   const audio = await fs.readFile(file)
 
   const res = await openai.audio.transcriptions.create({
-    file: openai.toFile(audio, path.basename(file)),
+    file: await OpenAI.toFile(audio, path.basename(file)),
     model: config.whisperModel,
     ...(lang ? { language: lang } : {}),
     response_format: "text",
@@ -141,26 +141,28 @@ async function hasVosk($: any): Promise<boolean> {
 async function transcribeFasterWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
   const modelSize = process.env.WHISPER_MODEL || "base"
-  const lang = language === "auto" ? null : language
+  // Python ждёт None, а не null — поэтому маппим auto -> None явно.
+  const langPy = language === "auto" ? "None" : JSON.stringify(language)
   const code = `
 import sys
 from faster_whisper import WhisperModel
-model = WhisperModel("${modelSize}", device="cpu", compute_type="int8")
-segments, info = model.transcribe(sys.argv[1], language=${JSON.stringify(lang)}, beam_size=5)
+model = WhisperModel(${JSON.stringify(modelSize)}, device="cpu", compute_type="int8")
+segments, info = model.transcribe(sys.argv[1], language=${langPy}, beam_size=5)
 print("".join(s.text for s in segments))
 `
-  const out = await $`python3 -c ${code} ${file}`.text()
+  const out = await runPythonFile($, code, file)
   return out.trim()
 }
 
 async function transcribeWhisperCpp(opts: { file: string; language: string; $: any; cli: string }): Promise<string> {
   const { file, language, $, cli } = opts
   const model = process.env.WHISPER_MODEL_PATH || "./models/ggml-base.bin"
-  const args = [cli, "-m", model, "-f", file, "-otxt"]
-  if (language && language !== "auto") {
-    args.push("-l", language === "ru" ? "ru" : "en")
+  const lang = language && language !== "auto" ? (language === "ru" ? "ru" : "en") : null
+  if (lang) {
+    await $`${cli} -m ${model} -f ${file} -otxt -l ${lang}`.quiet()
+  } else {
+    await $`${cli} -m ${model} -f ${file} -otxt`.quiet()
   }
-  await $`${args}`.quiet()
   const txt = `${file}.txt`
   try {
     const fs = await import("node:fs/promises")
@@ -173,27 +175,29 @@ async function transcribeWhisperCpp(opts: { file: string; language: string; $: a
 
 async function transcribePythonWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
-  const lang = language === "auto" ? null : language
+  const langPy = language === "auto" ? "None" : JSON.stringify(language)
+  const modelSize = process.env.WHISPER_MODEL || "base"
   const code = `
 import whisper, sys, json
-model = whisper.load_model("${process.env.WHISPER_MODEL || "base"}")
-res = model.transcribe(sys.argv[1], language=${JSON.stringify(lang)}, verbose=False)
+model = whisper.load_model(${JSON.stringify(modelSize)})
+res = model.transcribe(sys.argv[1], language=${langPy}, verbose=False)
 print(res["text"])
 `
-  const out = await $`python3 -c ${code} ${file}`.text()
+  const out = await runPythonFile($, code, file)
   return out.trim()
 }
 
 async function transcribeVosk(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
+  const modelPath = process.env.VOSK_MODEL_PATH || "./model"
   const code = `
 import json, sys
 from vosk import Model, KaldiRecognizer
 import wave
-model = Model("${process.env.VOSK_MODEL_PATH or "./model"}")
+model = Model(${JSON.stringify(modelPath)})
 wf = wave.open(sys.argv[1], "rb")
 rec = KaldiRecognizer(model, wf.getframerate())
-rec.SetLanguage("${language === "ru" ? "ru" : "en"}")
+rec.SetLanguage(${JSON.stringify(language === "ru" ? "ru" : "en")})
 res = []
 while True:
     data = wf.readframes(4000)
@@ -202,6 +206,25 @@ while True:
         res.append(json.loads(rec.Result())["text"])
 print(" ".join(res).strip())
 `
-  const out = await $`python3 -c ${code} ${file}`.text()
+  const out = await runPythonFile($, code, file)
   return out.trim()
+}
+
+/**
+ * Запускает многострочный Python-код через временный файл.
+ * `python3 -c <многострочный код>` ломается на кавычках/переносах,
+ * поэтому пишем код в /tmp/*.py и передаём аудиофайл как argv[1].
+ */
+async function runPythonFile($: any, code: string, audioFile: string): Promise<string> {
+  const fs = await import("node:fs/promises")
+  const os = await import("node:os")
+  const path = await import("node:path")
+  const script = path.join(os.tmpdir(), `voice-stt-${Date.now()}-${Math.random().toString(36).slice(2)}.py`)
+  await fs.writeFile(script, code, "utf8")
+  try {
+    const out = await $`python3 ${script} ${audioFile}`.text()
+    return out
+  } finally {
+    try { await fs.unlink(script) } catch {}
+  }
 }

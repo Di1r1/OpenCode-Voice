@@ -62,7 +62,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       // this hook, so we replace parts with a single empty text part to keep the
       // prompt valid (an empty parts array triggers a Google API error).
       output.parts.length = 0
-      output.parts.push({ type: "text", text: "" })
+      // Part требует id/sessionID/messageID по типам, рантайм их проставляет сам.
+      output.parts.push({ type: "text", text: "" } as any)
       await log("parts replaced", { now: output.parts.length })
 
       const args = (input.arguments || "").trim()
@@ -92,7 +93,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           showToast(`Текущий язык: ${state.language}`)
           return
         }
-        if (!STT_LANGUAGES.includes(want)) {
+        if (!(STT_LANGUAGES as readonly string[]).includes(want)) {
           showToast(`Доступные языки: ${STT_LANGUAGES.join(", ")}`, "error")
           return
         }
@@ -122,12 +123,21 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
-      // /voice — push-to-talk запись микрофона
+      // /voice — push-to-talk: запись микрофона -> распознавание -> вставка в prompt.
+      // recordPushToTalk возвращает путь к WAV, а не текст.
       showToast("Говорите… (Esc — отменить)")
       try {
         const { recordPushToTalk } = await import("./lib/recorder")
-        const text = await recordPushToTalk({ $, language: state.language })
-        if (text) {
+        const { transcribe } = await import("./lib/stt")
+        const file = await recordPushToTalk({ $, language: state.language })
+        if (file) {
+          showToast("Распознаю аудио…")
+          const text = await transcribe({
+            backend: state.backend,
+            language: state.language,
+            file,
+            $,
+          })
           append(text)
           showToast("Готово", "success")
         }

@@ -16,6 +16,8 @@
  * чтобы плагин не "завис". Для тестирования используй /voice <file.wav>.
  */
 
+import { unlinkSync } from "node:fs"
+
 export interface PttOptions {
   $: any
   language?: string
@@ -76,9 +78,9 @@ export async function recordPushToTalk(options: PttOptions): Promise<string> {
     return recordWith($, ["ffmpeg", "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "default", "-t", String(maxSeconds), out], out)
   }
 
-  // 2) arecord
+  // 2) arecord (ALSA). -d ограничивает длительность без внешней команды timeout.
   if (await hasArecord($)) {
-    return recordWith($, ["arecord", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-V", "vd", out, "timeout", String(maxSeconds)], out)
+    return recordWith($, ["arecord", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(maxSeconds), out], out)
   }
 
   // 3) sox / rec
@@ -121,7 +123,7 @@ async function recordWith($: any, cmd: string[], out: string): Promise<string> {
   } catch (e: any) {
     const msg = String(e?.stderr || e?.message || e)
     if (/cancel|interrupt|exit code 130|SIGINT|EINTR/.test(msg)) {
-      try { require("fs").unlinkSync(out) } catch {}
+      try { unlinkSync(out) } catch {}
       throw new Error("cancelled")
     }
     throw new Error(`Запись не удалась: ${msg.slice(0, 200)}`)

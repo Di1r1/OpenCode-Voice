@@ -5,14 +5,17 @@
   "module": "src/index.ts",
   "type": "module",
   "scripts": {
-    "dev": "opencode --plugin ."
+    "dev": "opencode --plugin .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.0.0",
     "openai": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
   },
   "keywords": ["opencode", "voice", "whisper", "speech-to-text"],
   "license": "MIT"
