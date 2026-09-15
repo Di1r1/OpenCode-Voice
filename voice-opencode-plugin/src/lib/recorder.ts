@@ -73,25 +73,42 @@ export async function recordPushToTalk(options: PttOptions): Promise<string> {
 
   const out = `/tmp/voice-ptt-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`
 
-  // 1) ffmpeg
-  if (await hasFfmpeg($)) {
-    return recordWith($, ["ffmpeg", "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "default", "-t", String(maxSeconds), out], out)
+  // Бэкенды пробуются по порядку, при ошибке — следующий.
+  // (Наличие бинарника ещё не значит, что запись сработает:
+  // например, ffmpeg может быть собран без ALSA-плагинов.)
+  const errors: string[] = []
+  const attempt = async (label: string, cmd: string[]) => {
+    try {
+      return await recordWith($, cmd, out)
+    } catch (e: any) {
+      errors.push(`${label}: ${e?.message || e}`)
+      return null
+    }
   }
 
-  // 2) arecord (ALSA). -d ограничивает длительность без внешней команды timeout.
+  // 1) ffmpeg (ALSA -> PulseAudio напрямую, без ~/.asoundrc)
+  if (await hasFfmpeg($)) {
+    const got = await attempt("ffmpeg", ["ffmpeg", "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "pulse", "-t", String(maxSeconds), out])
+    if (got) return got
+  }
+
+  // 2) arecord. -D pulse идёт напрямую в PulseAudio (в WSL2 звуковых карт нет),
+  // -d ограничивает длительность без внешней команды timeout.
   if (await hasArecord($)) {
-    return recordWith($, ["arecord", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(maxSeconds), out], out)
+    const got = await attempt("arecord", ["arecord", "-D", "pulse", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(maxSeconds), out])
+    if (got) return got
   }
 
   // 3) sox / rec
   if (await hasSox($)) {
     const cmd = (await which($, "sox")) || (await which($, "rec")) || "sox"
-    return recordWith($, [cmd, "-r", String(sr), "-c", String(ch), "-t", "wav", out, "trim", "0", String(maxSeconds)], out)
+    const got = await attempt("sox", [cmd, "-r", String(sr), "-c", String(ch), "-t", "wav", out, "trim", "0", String(maxSeconds)])
+    if (got) return got
   }
 
   // 4) python sounddevice
   if (await hasPythonSdt($)) {
-    return recordWith($, [
+    const got = await attempt("sounddevice", [
       "python3", "-c",
       [
         "import sounddevice as sd, numpy as np, sys, wave",
@@ -107,9 +124,13 @@ export async function recordPushToTalk(options: PttOptions): Promise<string> {
         "print('ok')",
       ].join(";"),
       out,
-    ], out)
+    ])
+    if (got) return got
   }
 
+  if (errors.length) {
+    throw new Error(`Запись не удалась (${errors.join("; ").slice(0, 300)}). Для тестирования используй /voice <file.wav>.`)
+  }
   throw new Error(
     "Микрофон недоступен: не найдены ffmpeg/arecord/sox или sounddevice. " +
     "Для тестирования используй /voice <file.wav>.",
