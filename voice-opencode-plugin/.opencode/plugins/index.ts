@@ -118,6 +118,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
             $,
           })
           append(text)
+          output.parts.length = 0
+          output.parts.push({ type: "text", text } as any)
           showToast("Готово", "success")
         } catch (e: any) {
           await log("transcribe file failed", { error: e?.message || String(e) })
@@ -142,6 +144,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
             $,
           })
           append(text)
+          output.parts.length = 0
+          output.parts.push({ type: "text", text } as any)
           showToast("Готово", "success")
         }
       } catch (e: any) {
