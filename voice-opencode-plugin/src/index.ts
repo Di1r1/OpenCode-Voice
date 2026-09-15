@@ -118,6 +118,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           append(text)
           showToast("Готово", "success")
         } catch (e: any) {
+          await log("transcribe file failed", { error: e?.message || String(e) })
           showToast(`Ошибка: ${e?.message || e}`, "error")
         }
         return
@@ -142,7 +143,11 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           showToast("Готово", "success")
         }
       } catch (e: any) {
-        if (e?.message === "cancelled") return
+        if (e?.message === "cancelled") {
+          await log("ptt cancelled")
+          return
+        }
+        await log("ptt failed", { error: e?.message || String(e) })
         showToast(`Ошибка: ${e?.message || e}`, "error")
       }
     },

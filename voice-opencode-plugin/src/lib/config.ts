@@ -2,7 +2,7 @@
  * Конфигурация плагина.
  *
  * Переменные окружения:
- *   OPENCODE_VOICE_BACKEND   local | api     (по умолчанию api)
+ *   OPENCODE_VOICE_BACKEND   local | api     (по умолчанию local)
  *   OPENCODE_VOICE_LANGUAGE  ru | en       (по умолчанию ru)
  *   OPENAI_API_KEY           ключ для облачного Whisper
  *   OPENCODE_VOICE_MODEL     модель Whisper (по умолчанию whisper-1)
@@ -13,7 +13,7 @@ export const STT_BACKENDS = ["local", "api"] as const
 export const STT_LANGUAGES = ["ru", "en", "auto"] as const
 
 export const DEFAULTS = {
-  sttBackend: "api" as const,
+  sttBackend: "local" as const,
   sttLanguage: "ru" as const,
   whisperModel: "whisper-1",
   sampleRate: 16000,
