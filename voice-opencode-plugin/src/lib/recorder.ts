@@ -39,10 +39,13 @@ const CHANNELS = 1
 async function which($: any, cmd: string): Promise<string | null> {
   try {
     const out = await $`command -v ${cmd}`.text()
-    return out.trim() || null
-  } catch {
-    return null
-  }
+    const p = out.trim()
+    if (p) return p
+  } catch {}
+  // Fallback: песочница opencode не видит command -v, но бинарники в /usr/bin есть
+  try { await $`test -x /usr/bin/${cmd}`.quiet(); return `/usr/bin/${cmd}` } catch {}
+  try { await $`test -x /bin/${cmd}`.quiet(); return `/bin/${cmd}` } catch {}
+  return null
 }
 
 async function hasFfmpeg($: any): Promise<boolean> {
@@ -86,47 +89,45 @@ export async function recordPushToTalk(options: PttOptions): Promise<string> {
     }
   }
 
-  // 1) ffmpeg (ALSA -> PulseAudio напрямую, без ~/.asoundrc)
-  if (await hasFfmpeg($)) {
-    const got = await attempt("ffmpeg", ["ffmpeg", "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "pulse", "-t", String(maxSeconds), out])
-    if (got) return got
-  }
+  // 1) ffmpeg (ALSA -> PulseAudio напрямую)
+  const ffmpegBin = (await which($, "ffmpeg")) || "/usr/bin/ffmpeg"
+  const got = await attempt("ffmpeg", [ffmpegBin, "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "pulse", "-t", String(maxSeconds), out])
+  if (got) return got
 
-  // 2) arecord. -D pulse идёт напрямую в PulseAudio (в WSL2 звуковых карт нет),
-  // -d ограничивает длительность без внешней команды timeout.
-  if (await hasArecord($)) {
-    const got = await attempt("arecord", ["arecord", "-D", "pulse", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(maxSeconds), out])
-    if (got) return got
-  }
+  // 2) arecord. -D pulse идёт напрямую в PulseAudio
+  const arecBin = (await which($, "arecord")) || "/usr/bin/arecord"
+  const got2 = await attempt("arecord", [arecBin, "-D", "pulse", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(maxSeconds), out])
+  if (got2) return got2
 
   // 3) sox / rec
-  if (await hasSox($)) {
-    const cmd = (await which($, "sox")) || (await which($, "rec")) || "sox"
-    const got = await attempt("sox", [cmd, "-r", String(sr), "-c", String(ch), "-t", "wav", out, "trim", "0", String(maxSeconds)])
-    if (got) return got
-  }
+  const soxBin = (await which($, "sox")) || (await which($, "rec")) || "/usr/bin/sox"
+  const got3 = await attempt("sox", [soxBin, "-r", String(sr), "-c", String(ch), "-t", "wav", out, "trim", "0", String(maxSeconds)])
+  if (got3) return got3
 
   // 4) python sounddevice
-  if (await hasPythonSdt($)) {
-    const got = await attempt("sounddevice", [
-      "python3", "-c",
-      [
-        "import sounddevice as sd, numpy as np, sys, wave",
-        `sr=${sr}; ch=${ch}; dur=${maxSeconds}`,
-        "q=sd.InputStream(samplerate=sr,channels=ch,dtype='int16')",
-        "frames=[]; q.start()",
-        "import time; t0=time.time()",
-        "while time.time()-t0<dur:",
-        "  d=q.read(int(sr*0.1))[0]; frames.append(d)",
-        "q.stop(); q.close()",
-        "a=np.concatenate(frames)",
-        "w=wave.open(sys.argv[1],'wb'); w.setnchannels(ch); w.setsampwidth(2); w.setframerate(sr); w.writeframes(a.tobytes()); w.close()",
-        "print('ok')",
-      ].join(";"),
-      out,
-    ])
-    if (got) return got
-  }
+  try {
+    const pyCheck = await $`python3 -c "import sounddevice, numpy; print('ok')"`.text()
+    if (pyCheck.includes("ok")) {
+      const got4 = await attempt("sounddevice", [
+        "python3", "-c",
+        [
+          "import sounddevice as sd, numpy as np, sys, wave",
+          `sr=${sr}; ch=${ch}; dur=${maxSeconds}`,
+          "q=sd.InputStream(samplerate=sr,channels=ch,dtype='int16')",
+          "frames=[]; q.start()",
+          "import time; t0=time.time()",
+          "while time.time()-t0<dur:",
+          "  d=q.read(int(sr*0.1))[0]; frames.append(d)",
+          "q.stop(); q.close()",
+          "a=np.concatenate(frames)",
+          "w=wave.open(sys.argv[1],'wb'); w.setnchannels(ch); w.setsampwidth(2); w.setframerate(sr); w.writeframes(a.tobytes()); w.close()",
+          "print('ok')",
+        ].join(";"),
+        out,
+      ])
+      if (got4) return got4
+    }
+  } catch {}
 
   if (errors.length) {
     throw new Error(`Запись не удалась (${errors.join("; ").slice(0, 300)}). Для тестирования используй /voice <file.wav>.`)
