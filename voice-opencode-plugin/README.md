@@ -1,42 +1,44 @@
 # OpenCode Voice
 
-Голосовой ввод для [OpenCode](https://opencode.ai): говоришь — текст попадает в поле ввода промпта. Поддерживает локальное распознавание (`faster-whisper`) и облачное (OpenAI Whisper API), push-to-talk в TUI и кнопку 🎤 в web UI.
+Voice input for [OpenCode](https://opencode.ai): speak, and your words land in the prompt. Supports local STT (`faster-whisper`) and cloud (OpenAI Whisper API), push-to-talk in the TUI, and a 🎤 button in the web UI.
 
-## Компоненты
+**English** | [Русский](README.ru.md)
 
-| Часть | Что делает |
-|-------|------------|
-| `src/` | Плагин OpenCode (TS): команда `/voice`, запись push-to-talk, STT-бэкенды |
-| `.opencode/` | Конфиг OpenCode (агенты, скиллы, команда `/voice`, TUI/web-плагины) |
-| `stt-server/` | Flask + faster-whisper: серверная запись через PulseAudio (WSL) и распознавание |
-| `extension/` | Расширение Chrome (MV3): кнопка 🎤 в web UI, гибридная запись (браузер → сервер) |
-| `voice-button.user.js` | Альтернатива расширению — userscript для Tampermonkey |
-| `sync-plugin.sh` | Синхронизация `src/index.ts` → `.opencode/plugins/index.ts` |
+## Components
 
-## Требования
+| Part | What it does |
+|------|--------------|
+| `src/` | OpenCode plugin (TS): the `/voice` command, push-to-talk recording, STT backends |
+| `.opencode/` | OpenCode config (agents, skills, the `/voice` command, TUI/web plugins) |
+| `stt-server/` | Flask + faster-whisper: server-side recording via PulseAudio (WSL) and transcription |
+| `extension/` | Chrome extension (MV3): the 🎤 button in the web UI, hybrid recording (browser → server) |
+| `voice-button.user.js` | Extension alternative — a Tampermonkey userscript |
+| `sync-plugin.sh` | Syncs `src/index.ts` → `.opencode/plugins/index.ts` |
 
-- Windows 10/11 + WSL2 с WSLg (аудио идёт через WSLg-PulseAudio).
-- Node.js + npm — для плагина.
-- Python 3.9+ — для STT-сервера.
-- Системные пакеты: `alsa-utils` (`arecord`), `libasound2-plugins`, `ffmpeg` (опционально).
+## Requirements
 
-## Установка
+- Windows 10/11 + WSL2 with WSLg (audio goes through WSLg PulseAudio).
+- Node.js + npm — for the plugin.
+- Python 3.9+ — for the STT server.
+- System packages: `alsa-utils` (`arecord`), `libasound2-plugins`, `ffmpeg` (optional).
 
-### 1. Аудио в WSL2
+## Installation
+
+### 1. Audio in WSL2
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y alsa-utils libasound2-plugins ffmpeg
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 
-# проверка
+# check
 pactl info
-arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav   # файл должен быть ~500 КБ, не 44 байта
+arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav   # should be ~500 KB, not 44 bytes
 ```
 
-> В WSL2 нет `/dev/snd` — это нормально. Микрофон доступен только через `PULSE_SERVER=unix:/mnt/wslg/PulseServer`.
+> There is no `/dev/snd` in WSL2 — that is expected. The microphone is reachable only via `PULSE_SERVER=unix:/mnt/wslg/PulseServer`.
 
-### 2. STT-сервер
+### 2. STT server
 
 ```bash
 cd voice-opencode-plugin/stt-server
@@ -46,117 +48,117 @@ export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 python3 stt_server.py --model small --port 8765
 ```
 
-Модели: `tiny` / `base` / `small` (по умолчанию) / `medium`. Проверка: `curl -s localhost:8765/health`.
+Models: `tiny` / `base` / `small` (default) / `medium`. Check: `curl -s localhost:8765/health`.
 
-Без микрофона можно проверить весь пайплайн на готовом WAV:
+Without a microphone you can exercise the whole pipeline on a prepared WAV:
 
 ```bash
 OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765
 ```
 
-Тесты маршрутов: `python3 test_stt_server.py --port 8765`.
+Route tests: `python3 test_stt_server.py --port 8765`.
 
-### 3. Плагин OpenCode
+### 3. OpenCode plugin
 
 ```bash
 cd voice-opencode-plugin
 npm install
-bash sync-plugin.sh     # после правок src/index.ts
+bash sync-plugin.sh     # run after editing src/index.ts
 npm run typecheck
 ```
 
-`opencode.json` уже подключает плагин (`./.opencode/plugins/index.ts`), `tui.json` — TUI/web-части. Запуск:
+`opencode.json` already loads the plugin (`./.opencode/plugins/index.ts`); `tui.json` wires up the TUI/web parts. Start it:
 
 ```bash
 export OPENCODE_VOICE_BACKEND=local OPENCODE_VOICE_LANGUAGE=ru PULSE_SERVER=unix:/mnt/wslg/PulseServer
 opencode web --hostname 0.0.0.0
 ```
 
-### 4. Расширение Chrome (кнопка 🎤)
+### 4. Chrome extension (🎤 button)
 
-1. Открыть `chrome://extensions`, включить **Developer mode**.
-2. **Load unpacked** → выбрать папку `voice-opencode-plugin/extension`.
-3. Открыть web UI OpenCode — кнопка 🎤 появится рядом с полем ввода.
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. **Load unpacked** → select the `voice-opencode-plugin/extension` folder.
+3. Open the OpenCode web UI — the 🎤 button appears next to the input field.
 
-Расширение обращается к STT-серверу по `http(s)://<host>:8765` (порт `STT_PORT` в `extension/content.js`). В `extension/manifest.json` уже прописаны `localhost`/`127.0.0.1` и IP этой машины; при смене хоста добавьте его в `host_permissions`.
+The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` already lists `localhost`/`127.0.0.1`; if your host differs, add it to `host_permissions`.
 
-### 5. Userscript (альтернатива расширению)
+### 5. Userscript (extension alternative)
 
-Установить `voice-button.user.js` в Tampermonkey (или аналог) — добавляет кнопку 🎤 без расширения.
+Install `voice-button.user.js` in Tampermonkey (or similar) — it adds the 🎤 button with no extension needed.
 
-## Команды `/voice`
+## `/voice` commands
 
-| Команда | Действие |
-|---------|----------|
-| `/voice` | Push-to-talk: запись → распознавание → вставка текста в промпт |
-| `/voice <file.wav>` | Распознать локальный аудиофайл (без микрофона) |
-| `/voice backend [local\|api]` | Показать/сменить STT-бэкенд |
-| `/voice lang [ru\|en\|auto]` | Показать/сменить язык |
+| Command | Action |
+|---------|--------|
+| `/voice` | Push-to-talk: record → transcribe → insert text into the prompt |
+| `/voice <file.wav>` | Transcribe a local audio file (no microphone needed) |
+| `/voice backend [local\|api]` | Show/switch the STT backend |
+| `/voice lang [ru\|en\|auto]` | Show/switch the language |
 
-TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) запускает push-to-talk.
+TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk.
 
-## Конфигурация (переменные окружения)
+## Configuration (environment variables)
 
-| Переменная | Назначение | По умолчанию |
-|------------|-----------|--------------|
+| Variable | Purpose | Default |
+|----------|---------|---------|
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
-| `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/пусто (авто) | `ru` |
-| `OPENAI_API_KEY` | ключ для бэкенда `api` | — |
-| `WHISPER_MODEL` | модель для локального бэкенда плагина | `small` |
-| `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | русская |
-| `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
-| `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
-| `OPENCODE_VOICE_MAX_SECONDS` | максимум записи на сервере | `120` |
-| `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
-| `PULSE_SERVER` | сокет PulseAudio | авто `/mnt/wslg/PulseServer` |
+| `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/empty (auto) | `ru` |
+| `OPENAI_API_KEY` | key for the `api` backend | — |
+| `WHISPER_MODEL` | model for the plugin's local backend | `small` |
+| `WHISPER_INITIAL_PROMPT` | context hint for Whisper | Russian |
+| `WHISPER_LANG_DETECT_SEGMENTS` | segments used for auto language detection | `3` |
+| `WHISPER_LANG_DETECT_THRESHOLD` | language confidence threshold | `0.6` |
+| `OPENCODE_VOICE_MAX_SECONDS` | max server-side recording length | `120` |
+| `OPENCODE_VOICE_FAKE_AUDIO` | path to a WAV for microphone-free testing | — |
+| `PULSE_SERVER` | PulseAudio socket | auto `/mnt/wslg/PulseServer` |
 
-На коротких фразах авто-определение языка ограничено: если обычно говорите на одном языке, надёжнее задать его явно (`OPENCODE_VOICE_LANGUAGE=ru`).
+On short phrases auto language detection is limited: if you usually speak one language, set it explicitly (`OPENCODE_VOICE_LANGUAGE=ru`) for reliability.
 
-## Если микрофон недоступен
+## If the microphone is unavailable
 
-Сервер отвечает одной из двух ошибок:
+The server responds with one of two errors:
 
-- `Нет доступа к микрофону: PulseAudio не отвечает…` — рекордер не смог подключиться.
-- `Аудиоисточник молчит: рекордер подключился, но данных нет (получено N байт)…` — подключился, но WSLg не отдаёт звук по каналу `audin`.
+- `Нет доступа к микрофону: PulseAudio не отвечает…` — the recorder could not connect.
+- `Аудиоисточник молчит: рекордер подключился, но данных нет (получено N байт)…` — it connected, but WSLg delivers no audio over the `audin` channel.
 
-Проверка:
+Check:
 
 ```bash
 PULSE_SERVER=unix:/mnt/wslg/PulseServer pactl info
 PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -r 16000 -c 1 -t wav -d 3 /tmp/t.wav
 ```
 
-**Быстрый фикс без `wsl --shutdown`** (пересоздаёт внутренний RDP-канал WSLg). Выполнять из WSL:
+**Quick fix without `wsl --shutdown`** (recreates WSLg's internal RDP channel). Run from WSL:
 
 ```bash
-# 1. пересоздать RDP-сессию WSLg (WSLGd сам поднимет weston); GUI WSLg перезапустится
+# 1. recreate the WSLg RDP session (WSLGd will respawn weston); the WSLg GUI restarts
 /mnt/c/Windows/System32/wsl.exe --system -e sh -lc 'pkill -9 -x weston'
 sleep 8
-# 2. перезапустить PulseAudio, чтобы подключился к свежему каналу
+# 2. restart PulseAudio so it attaches to the fresh channel
 /mnt/c/Windows/System32/wsl.exe --system -e sh -lc 'pkill -9 -x pulseaudio'
 sleep 5
-# 3. проверка: должен записаться реальный файл (~500 КБ), а не 44 байта
+# 3. verify: a real file (~500 KB) should be written, not a 44-byte stub
 PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav
 ```
 
-Также проверьте доступ приложения к микрофону в Windows (Параметры → Конфиденциальность → Микрофон); в RDP-сессии включите «Запись с этого компьютера». Если не помогло — полный рестарт: `wsl --shutdown` (из Windows PowerShell) и заново открыть WSL.
+Also make sure the app has microphone access in Windows (Settings → Privacy → Microphone); in an RDP session enable "Record from this computer". If that does not help, do a full restart: `wsl --shutdown` (from Windows PowerShell), then reopen WSL.
 
-## Структура
+## Structure
 
 ```
 voice-opencode-plugin/
-├── src/                     # код плагина (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
-├── .opencode/               # конфиг OpenCode: agents, commands, plugins, skills, tui, web
+├── src/                     # plugin code (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
+├── .opencode/               # OpenCode config: agents, commands, plugins, skills, tui, web
 ├── stt-server/              # Flask + faster-whisper: stt_server.py, test_stt_server.py
-├── extension/               # Chrome-расширение (MV3)
+├── extension/               # Chrome extension (MV3)
 ├── voice-button.user.js     # userscript
 ├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts
-├── opencode.json            # подключение плагина + агенты
-├── tui.json                 # TUI/web-плагины + хоткеи
-├── AGENTS.md                # заметки по архитектуре
-└── TEST_PLAN.md             # план тестирования
+├── opencode.json            # plugin wiring + agents
+├── tui.json                 # TUI/web plugins + keybinds
+├── AGENTS.md                # architecture notes
+└── TEST_PLAN.md             # test plan
 ```
 
-## Лицензия
+## License
 
 MIT
