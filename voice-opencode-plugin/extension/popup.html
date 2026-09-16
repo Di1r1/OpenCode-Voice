@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 16px; width: 280px; }
+    h3 { margin: 0 0 12px; font-size: 16px; color: #333; }
+    .status { padding: 8px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+    .status.ok { background: #d1fae5; color: #065f46; }
+    .status.error { background: #fee2e2; color: #991b1b; }
+    .btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; margin-bottom: 8px; }
+    .btn.primary { background: #2563eb; color: white; }
+    .btn.primary:hover { background: #1d4ed8; }
+    .btn.secondary { background: #f3f4f6; color: #374151; }
+    .btn.secondary:hover { background: #e5e7eb; }
+    .info { font-size: 12px; color: #6b7280; margin-top: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h3>🎤 OpenCode Voice</h3>
+  <div id="status" class="status">Проверка...</div>
+  <button id="testBtn" class="btn primary" disabled>Тест STT сервера</button>
+  <button id="openBtn" class="btn secondary">Открыть настройки</button>
+  <div class="info">
+    Работает на <code>http://localhost:8765</code> (faster-whisper).
+    Запустите <code>python stt_server.py</code> перед использованием.
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -140,14 +140,30 @@ async function hasVosk($: any): Promise<boolean> {
 
 async function transcribeFasterWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
-  const modelSize = process.env.WHISPER_MODEL || "base"
+  const modelSize = process.env.WHISPER_MODEL || "small"
   // Python ждёт None, а не null — поэтому маппим auto -> None явно.
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
+  const initialPrompt = process.env.WHISPER_INITIAL_PROMPT ||
+    "Расшифровка русской речи. Пиши с заглавных букв и знаками препинания."
+  // Качество авто-определения языка (применяется когда language=auto/None).
+  const detectSegments = Number(process.env.WHISPER_LANG_DETECT_SEGMENTS ?? 3) || 3
+  const detectThreshold = Number(process.env.WHISPER_LANG_DETECT_THRESHOLD ?? 0.6) || 0.6
   const code = `
 import sys
 from faster_whisper import WhisperModel
 model = WhisperModel(${JSON.stringify(modelSize)}, device="cpu", compute_type="int8")
-segments, info = model.transcribe(sys.argv[1], language=${langPy}, beam_size=5)
+segments, info = model.transcribe(
+    sys.argv[1],
+    language=${langPy},
+    beam_size=5,
+    vad_filter=True,
+    vad_parameters=dict(min_silence_duration_ms=300),
+    initial_prompt=${JSON.stringify(initialPrompt)},
+    condition_on_previous_text=False,
+    temperature=0.0,
+    language_detection_segments=${detectSegments},
+    language_detection_threshold=${detectThreshold},
+)
 print("".join(s.text for s in segments))
 `
   const out = await runPythonFile($, code, file)

@@ -19,6 +19,7 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  * как будто его напечатали вручную.
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
+  console.log("[voice-plugin] Plugin loaded!")
   const { config, STT_BACKENDS, STT_LANGUAGES, DEFAULTS } = await import("./lib/config")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
@@ -127,13 +128,20 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
       // /voice — push-to-talk: запись микрофона -> распознавание -> вставка в prompt.
       // recordPushToTalk возвращает путь к WAV, а не текст.
-      showToast("Говорите… (Esc — отменить)")
+      let recordingToastId = 0
+      showToast("🎙 Запись: 0 сек")
       try {
         const { recordPushToTalk } = await import("./lib/recorder")
         const { transcribe } = await import("./lib/stt")
-        const file = await recordPushToTalk({ $, language: state.language })
+        const file = await recordPushToTalk({
+          $,
+          language: state.language,
+          onProgress: (sec) => {
+            showToast(`🎙 Запись: ${sec} сек`)
+          },
+        })
         if (file) {
-          showToast("Распознаю аудио…")
+          showToast("🧠 Распознаю речь…")
           const text = await transcribe({
             backend: state.backend,
             language: state.language,
@@ -143,7 +151,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           append(text)
           output.parts.length = 0
           output.parts.push({ type: "text", text } as any)
-          showToast("Готово", "success")
+          showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
         }
       } catch (e: any) {
         if (e?.message === "cancelled") {
@@ -151,7 +159,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           return
         }
         await log("ptt failed", { error: e?.message || String(e) })
-        showToast(`Ошибка: ${e?.message || e}`, "error")
+        showToast(`❌ Ошибка: ${e?.message || e}`, "error")
       }
     },
   }

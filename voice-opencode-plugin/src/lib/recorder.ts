@@ -16,7 +16,7 @@
  * чтобы плагин не "завис". Для тестирования используй /voice <file.wav>.
  */
 
-import { unlinkSync } from "node:fs"
+import { statSync, unlinkSync } from "node:fs"
 
 export interface PttOptions {
   $: any
@@ -26,6 +26,8 @@ export interface PttOptions {
   bitsPerSample?: number
   /** Максимальная продолжительность записи в секундах */
   maxSeconds?: number
+  /** Колбэк прогресса: вызывается каждую секунду во время записи */
+  onProgress?: (seconds: number) => void
 }
 
 export interface PttResult {
@@ -70,34 +72,42 @@ async function hasPythonSdt($: any): Promise<boolean> {
 }
 
 export async function recordPushToTalk(options: PttOptions): Promise<string> {
-  const { $, maxSeconds = 30 } = options
+  const { $, maxSeconds = 30, onProgress } = options
   const sr = options.sampleRate || SAMPLE_RATE
   const ch = options.channels || CHANNELS
 
   const out = `/tmp/voice-ptt-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`
 
+  // Убираем зависшие записи прошлых запусков — они держат микрофон и мешают
+  // и плагину, и Chrome-расширению.
+  try { await $`pkill -f voice-ptt-`.quiet() } catch {}
+
   // Бэкенды пробуются по порядку, при ошибке — следующий.
-  // (Наличие бинарника ещё не значит, что запись сработает:
-  // например, ffmpeg может быть собран без ALSA-плагинов.)
+  // timeout — страховка: если рекордер зависнет на connect к PulseAudio,
+  // он будет убит через maxSeconds + 8 и мы перейдём к следующему бэкенду.
   const errors: string[] = []
+  const hardTimeout = maxSeconds + 8
   const attempt = async (label: string, cmd: string[]) => {
     try {
-      return await recordWith($, cmd, out)
+      const full = ["timeout", "--signal=INT", String(hardTimeout), ...cmd]
+      return await recordWith($, full, out, maxSeconds, onProgress)
     } catch (e: any) {
+      // «Мёртвый» источник — не пробуем остальные бэкенды, они упрутся в то же.
+      if (e?.noAudio) throw e
       errors.push(`${label}: ${e?.message || e}`)
       return null
     }
   }
 
-  // 1) ffmpeg (ALSA -> PulseAudio напрямую)
-  const ffmpegBin = (await which($, "ffmpeg")) || "/usr/bin/ffmpeg"
-  const got = await attempt("ffmpeg", [ffmpegBin, "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "pulse", "-t", String(maxSeconds), out])
-  if (got) return got
-
-  // 2) arecord. -D pulse идёт напрямую в PulseAudio
+  // 1) arecord — в WSL самый надёжный (ffmpeg часто зависает на PulseAudio)
   const arecBin = (await which($, "arecord")) || "/usr/bin/arecord"
   const got2 = await attempt("arecord", [arecBin, "-D", "pulse", "-f", "cd", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(maxSeconds), out])
   if (got2) return got2
+
+  // 2) ffmpeg (ALSA -> PulseAudio); -nostdin чтобы не ждал ввод
+  const ffmpegBin = (await which($, "ffmpeg")) || "/usr/bin/ffmpeg"
+  const got = await attempt("ffmpeg", [ffmpegBin, "-nostdin", "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "pulse", "-t", String(maxSeconds), out])
+  if (got) return got
 
   // 3) sox / rec
   const soxBin = (await which($, "sox")) || (await which($, "rec")) || "/usr/bin/sox"
@@ -138,16 +148,40 @@ export async function recordPushToTalk(options: PttOptions): Promise<string> {
   )
 }
 
-async function recordWith($: any, cmd: string[], out: string): Promise<string> {
-  try {
-    await $`${cmd}`.quiet()
-    return out
-  } catch (e: any) {
-    const msg = String(e?.stderr || e?.message || e)
-    if (/cancel|interrupt|exit code 130|SIGINT|EINTR/.test(msg)) {
-      try { unlinkSync(out) } catch {}
-      throw new Error("cancelled")
+async function recordWith($: any, cmd: string[], out: string, maxSeconds: number, onProgress?: (sec: number) => void): Promise<string> {
+  const proc = $`${cmd}`
+  const start = Date.now()
+
+  if (onProgress) {
+    const timer = setInterval(() => {
+      const sec = Math.floor((Date.now() - start) / 1000)
+      if (sec < maxSeconds) onProgress(sec)
+    }, 1000)
+    try {
+      await proc.quiet()
+    } finally {
+      clearInterval(timer)
     }
-    throw new Error(`Запись не удалась: ${msg.slice(0, 200)}`)
+  } else {
+    await proc.quiet()
   }
+
+  // Защита от «мёртвого» источника: рекордер мог подключиться, но не записать
+  // звук (WAV-заголовок создаётся сразу). Почти пустой файл — сообщаем явно,
+  // иначе плагин молча вернёт пустую расшифровку.
+  let size = 0
+  try {
+    size = statSync(out).size
+  } catch {
+    size = 0
+  }
+  if (size < 2000) {
+    const err: any = new Error(
+      "микрофон молчит: рекордер подключился, но данные не пошли " +
+      "(проверь канал RDP/audin или PULSE_SERVER=/mnt/wslg/PulseServer)",
+    )
+    err.noAudio = true
+    throw err
+  }
+  return out
 }
