@@ -34,6 +34,11 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
     }
   }
 
+  // Авто-старт STT-сервера при загрузке плагина, чтобы Chrome-расширение сразу работало.
+  const { ensureSttServer, startServerWatchdog } = await import("./lib/server-launcher")
+  void ensureSttServer(directory, log)
+  startServerWatchdog(directory, log)
+
   const append = (text: string) => {
     if (!text) return
     try {

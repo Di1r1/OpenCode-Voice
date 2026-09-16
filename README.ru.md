@@ -48,6 +48,8 @@ export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 python3 stt_server.py --model small --port 8765
 ```
 
+Плагин сам запускает этот сервер при загрузке OpenCode (если он ещё не запущен) и следит за его живостью — ручной запуск необязателен.
+
 Модели: `tiny` / `base` / `small` (по умолчанию) / `medium`. Проверка: `curl -s localhost:8765/health`.
 
 Без микрофона можно проверить весь пайплайн на готовом WAV:
@@ -114,6 +116,10 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 | `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | авто-пересоздание аудиоканала WSLg при молчащем источнике | `1` |
 | `OPENCODE_VOICE_KEEP_AUDIO` | каталог для сохранения записанного аудио (отладка) | — |
+| `OPENCODE_VOICE_SERVER` | авто-запуск STT-сервера при загрузке плагина | `1` |
+| `OPENCODE_VOICE_SERVER_SCRIPT` | путь к `stt_server.py` (нестандартная раскладка) | авто |
+| `OPENCODE_VOICE_PORT` | порт STT-сервера | `8765` |
+| `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | период проверки/перезапуска, `0` = выкл | `120000` |
 | `PULSE_SERVER` | сокет PulseAudio | авто `/mnt/wslg/PulseServer` |
 
 На коротких фразах авто-определение языка ограничено: если обычно говорите на одном языке, надёжнее задать его явно (`OPENCODE_VOICE_LANGUAGE=ru`).

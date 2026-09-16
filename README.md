@@ -48,6 +48,8 @@ export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 python3 stt_server.py --model small --port 8765
 ```
 
+The plugin auto-starts this server when OpenCode loads (if it is not already running) and keeps it alive with a watchdog — manual start is optional.
+
 Models: `tiny` / `base` / `small` (default) / `medium`. Check: `curl -s localhost:8765/health`.
 
 Without a microphone you can exercise the whole pipeline on a prepared WAV:
@@ -114,6 +116,10 @@ TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-tal
 | `OPENCODE_VOICE_FAKE_AUDIO` | path to a WAV for microphone-free testing | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | auto-recreate the WSLg audio channel on a silent source | `1` |
 | `OPENCODE_VOICE_KEEP_AUDIO` | directory to save recorded audio for debugging | — |
+| `OPENCODE_VOICE_SERVER` | auto-start the STT server on plugin load | `1` |
+| `OPENCODE_VOICE_SERVER_SCRIPT` | path to `stt_server.py` (non-standard layouts) | auto |
+| `OPENCODE_VOICE_PORT` | STT server port | `8765` |
+| `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | health-check/restart interval, `0` = off | `120000` |
 | `PULSE_SERVER` | PulseAudio socket | auto `/mnt/wslg/PulseServer` |
 
 On short phrases auto language detection is limited: if you usually speak one language, set it explicitly (`OPENCODE_VOICE_LANGUAGE=ru`) for reliability.
