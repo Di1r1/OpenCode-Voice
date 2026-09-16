@@ -49,11 +49,9 @@ MODEL_SIZE = "small"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 
-# Подсказка для пунктуации/контекста (bias для Whisper)
-INITIAL_PROMPT = os.getenv(
-    "WHISPER_INITIAL_PROMPT",
-    "Расшифровка русской речи. Пиши с заглавных букв и знаками препинания.",
-)
+# Подсказка для пунктуации/контекста (bias для Whisper). По умолчанию пусто:
+# жёсткий русский prompt ухудшал распознавание отдельных слов (проверка → прайберка).
+INITIAL_PROMPT = os.getenv("WHISPER_INITIAL_PROMPT", "")
 LANGUAGE = os.getenv("OPENCODE_VOICE_LANGUAGE", "") or None  # "" → авто
 
 # Качество авто-определения языка (используется только когда LANGUAGE is None).
@@ -64,6 +62,9 @@ LANG_DETECT_THRESHOLD = float(os.getenv("WHISPER_LANG_DETECT_THRESHOLD", "0.6"))
 # Скорость распознавания: beam_size=1 (greedy) заметно быстрее beam=5.
 BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
 VAD_FILTER = os.getenv("WHISPER_VAD", "1").lower() not in ("0", "false", "no", "off", "")
+
+# Отладка: если задан каталог — сохранять туда каждый записанный/принятый WAV.
+KEEP_AUDIO_DIR = os.getenv("OPENCODE_VOICE_KEEP_AUDIO", "")
 
 # Recording state
 _rec_lock = threading.Lock()
@@ -118,7 +119,7 @@ def transcribe_file(path: str) -> dict:
         beam_size=BEAM_SIZE,
         vad_filter=VAD_FILTER,
         vad_parameters=dict(min_silence_duration_ms=300),
-        initial_prompt=INITIAL_PROMPT,
+        initial_prompt=INITIAL_PROMPT or None,
         condition_on_previous_text=False,
         temperature=0.0,
         language_detection_segments=LANG_DETECT_SEGMENTS,
@@ -259,6 +260,19 @@ def _arm_watchdog(proc):
     _rec_timer = threading.Timer(MAX_SECONDS + 5, _watchdog_fire, args=(proc,))
     _rec_timer.daemon = True
     _rec_timer.start()
+
+
+def _keep_audio(path, tag="rec"):
+    """Отладочно сохранить WAV в KEEP_AUDIO_DIR (если задан)."""
+    if not KEEP_AUDIO_DIR or not path or not os.path.exists(path):
+        return
+    try:
+        os.makedirs(KEEP_AUDIO_DIR, exist_ok=True)
+        dst = os.path.join(KEEP_AUDIO_DIR, f"{tag}-{time.strftime('%Y%m%d-%H%M%S')}.wav")
+        shutil.copyfile(path, dst)
+        logger.info(f"kept audio -> {dst}")
+    except Exception as e:
+        logger.warning(f"keep audio failed: {e}")
 
 
 def _wslg_restart():
@@ -462,6 +476,7 @@ def record_stop():
 
     size = os.path.getsize(path)
     logger.info(f"Recording stopped: {path} ({size} bytes)")
+    _keep_audio(path, "rec")
     if size < 2000:
         try:
             os.unlink(path)
@@ -511,6 +526,7 @@ def transcribe():
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         audio_file.save(tmp.name)
         tmp_path = tmp.name
+    _keep_audio(tmp_path, "upload")
 
     try:
         return jsonify(transcribe_file(tmp_path))

@@ -143,8 +143,7 @@ async function transcribeFasterWhisper(opts: { file: string; language: string; $
   const modelSize = process.env.WHISPER_MODEL || "base"
   // Python ждёт None, а не null — поэтому маппим auto -> None явно.
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
-  const initialPrompt = process.env.WHISPER_INITIAL_PROMPT ||
-    "Расшифровка русской речи. Пиши с заглавных букв и знаками препинания."
+  const initialPrompt = process.env.WHISPER_INITIAL_PROMPT || ""
   // Качество авто-определения языка (применяется когда language=auto/None).
   const detectSegments = Number(process.env.WHISPER_LANG_DETECT_SEGMENTS ?? 3) || 3
   const detectThreshold = Number(process.env.WHISPER_LANG_DETECT_THRESHOLD ?? 0.6) || 0.6
@@ -163,7 +162,7 @@ segments, info = model.transcribe(
     beam_size=${beamSize},
     vad_filter=${vad ? "True" : "False"},
     vad_parameters=dict(min_silence_duration_ms=300),
-    initial_prompt=${JSON.stringify(initialPrompt)},
+    initial_prompt=${initialPrompt ? JSON.stringify(initialPrompt) : "None"},
     condition_on_previous_text=False,
     temperature=0.0,
     language_detection_segments=${detectSegments},

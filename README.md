@@ -107,12 +107,13 @@ TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-tal
 | `WHISPER_MODEL` | model for the plugin's local backend | `base` |
 | `WHISPER_BEAM_SIZE` | decoder beam size (`1` = greedy, fastest) | `1` |
 | `WHISPER_VAD` | voice-activity filter (`1`/`0`) | `1` |
-| `WHISPER_INITIAL_PROMPT` | context hint for Whisper | Russian |
+| `WHISPER_INITIAL_PROMPT` | context hint for Whisper | empty (off) |
 | `WHISPER_LANG_DETECT_SEGMENTS` | segments used for auto language detection | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | language confidence threshold | `0.6` |
 | `OPENCODE_VOICE_MAX_SECONDS` | max server-side recording length | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | path to a WAV for microphone-free testing | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | auto-recreate the WSLg audio channel on a silent source | `1` |
+| `OPENCODE_VOICE_KEEP_AUDIO` | directory to save recorded audio for debugging | — |
 | `PULSE_SERVER` | PulseAudio socket | auto `/mnt/wslg/PulseServer` |
 
 On short phrases auto language detection is limited: if you usually speak one language, set it explicitly (`OPENCODE_VOICE_LANGUAGE=ru`) for reliability.

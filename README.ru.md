@@ -107,12 +107,13 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 | `WHISPER_MODEL` | модель для локального бэкенда плагина | `base` |
 | `WHISPER_BEAM_SIZE` | beam size декодера (`1` = greedy, быстрее всего) | `1` |
 | `WHISPER_VAD` | VAD-фильтр (`1`/`0`) | `1` |
-| `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | русская |
+| `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |
 | `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
 | `OPENCODE_VOICE_MAX_SECONDS` | максимум записи на сервере | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | авто-пересоздание аудиоканала WSLg при молчащем источнике | `1` |
+| `OPENCODE_VOICE_KEEP_AUDIO` | каталог для сохранения записанного аудио (отладка) | — |
 | `PULSE_SERVER` | сокет PulseAudio | авто `/mnt/wslg/PulseServer` |
 
 На коротких фразах авто-определение языка ограничено: если обычно говорите на одном языке, надёжнее задать его явно (`OPENCODE_VOICE_LANGUAGE=ru`).
