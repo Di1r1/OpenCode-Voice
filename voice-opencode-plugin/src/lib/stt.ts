@@ -140,7 +140,7 @@ async function hasVosk($: any): Promise<boolean> {
 
 async function transcribeFasterWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
-  const modelSize = process.env.WHISPER_MODEL || "small"
+  const modelSize = process.env.WHISPER_MODEL || "base"
   // Python ждёт None, а не null — поэтому маппим auto -> None явно.
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
   const initialPrompt = process.env.WHISPER_INITIAL_PROMPT ||
@@ -148,6 +148,11 @@ async function transcribeFasterWhisper(opts: { file: string; language: string; $
   // Качество авто-определения языка (применяется когда language=auto/None).
   const detectSegments = Number(process.env.WHISPER_LANG_DETECT_SEGMENTS ?? 3) || 3
   const detectThreshold = Number(process.env.WHISPER_LANG_DETECT_THRESHOLD ?? 0.6) || 0.6
+  // Скорость распознавания.
+  const beamSize = Number(process.env.WHISPER_BEAM_SIZE ?? 1) || 1
+  const vad = !["0", "false", "no", "off", ""].includes(
+    String(process.env.WHISPER_VAD ?? "1").toLowerCase(),
+  )
   const code = `
 import sys
 from faster_whisper import WhisperModel
@@ -155,8 +160,8 @@ model = WhisperModel(${JSON.stringify(modelSize)}, device="cpu", compute_type="i
 segments, info = model.transcribe(
     sys.argv[1],
     language=${langPy},
-    beam_size=5,
-    vad_filter=True,
+    beam_size=${beamSize},
+    vad_filter=${vad ? "True" : "False"},
     vad_parameters=dict(min_silence_duration_ms=300),
     initial_prompt=${JSON.stringify(initialPrompt)},
     condition_on_previous_text=False,

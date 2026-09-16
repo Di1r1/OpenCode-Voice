@@ -45,10 +45,10 @@ cd voice-opencode-plugin/stt-server
 pip install --no-input faster-whisper flask requests
 
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
-python3 stt_server.py --model small --port 8765
+python3 stt_server.py --model base --port 8765
 ```
 
-Модели: `tiny` / `base` / `small` (по умолчанию) / `medium`. Проверка: `curl -s localhost:8765/health`.
+Модели: `tiny` / `base` (по умолчанию) / `small` / `medium`. Проверка: `curl -s localhost:8765/health`.
 
 Без микрофона можно проверить весь пайплайн на готовом WAV:
 
@@ -104,7 +104,9 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
 | `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/пусто (авто) | `ru` |
 | `OPENAI_API_KEY` | ключ для бэкенда `api` | — |
-| `WHISPER_MODEL` | модель для локального бэкенда плагина | `small` |
+| `WHISPER_MODEL` | модель для локального бэкенда плагина | `base` |
+| `WHISPER_BEAM_SIZE` | beam size декодера (`1` = greedy, быстрее всего) | `1` |
+| `WHISPER_VAD` | VAD-фильтр (`1`/`0`) | `1` |
 | `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | русская |
 | `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |

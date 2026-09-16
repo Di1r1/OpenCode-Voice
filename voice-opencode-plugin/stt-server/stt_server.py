@@ -61,6 +61,10 @@ LANGUAGE = os.getenv("OPENCODE_VOICE_LANGUAGE", "") or None  # "" → авто
 LANG_DETECT_SEGMENTS = int(os.getenv("WHISPER_LANG_DETECT_SEGMENTS", "3"))
 LANG_DETECT_THRESHOLD = float(os.getenv("WHISPER_LANG_DETECT_THRESHOLD", "0.6"))
 
+# Скорость распознавания: beam_size=1 (greedy) заметно быстрее beam=5.
+BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
+VAD_FILTER = os.getenv("WHISPER_VAD", "1").lower() not in ("0", "false", "no", "off", "")
+
 # Recording state
 _rec_lock = threading.Lock()
 _rec_proc = None
@@ -111,8 +115,8 @@ def transcribe_file(path: str) -> dict:
     segments, info = model.transcribe(
         path,
         language=LANGUAGE,          # None → авто, либо ru/en из env
-        beam_size=5,
-        vad_filter=True,
+        beam_size=BEAM_SIZE,
+        vad_filter=VAD_FILTER,
         vad_parameters=dict(min_silence_duration_ms=300),
         initial_prompt=INITIAL_PROMPT,
         condition_on_previous_text=False,
@@ -526,7 +530,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenCode Voice STT Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
-    parser.add_argument("--model", default="small", help="Whisper model size (tiny, base, small, medium, large)")
+    parser.add_argument("--model", default="base", help="Whisper model size (tiny, base, small, medium, large)")
     parser.add_argument("--device", default="cpu", help="Device (cpu, cuda)")
     parser.add_argument("--compute-type", default="int8", help="Compute type (int8, float16, float32)")
     args = parser.parse_args()
@@ -546,4 +550,5 @@ if __name__ == "__main__":
         f"Language: {LANGUAGE or 'auto'} "
         f"(detect segments={LANG_DETECT_SEGMENTS}, threshold={LANG_DETECT_THRESHOLD})"
     )
+    logger.info(f"STT: model={MODEL_SIZE} beam={BEAM_SIZE} vad={VAD_FILTER}")
     app.run(host=args.host, port=args.port, threaded=True)
