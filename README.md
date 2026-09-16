@@ -45,10 +45,10 @@ cd voice-opencode-plugin/stt-server
 pip install --no-input faster-whisper flask requests
 
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
-python3 stt_server.py --model base --port 8765
+python3 stt_server.py --model small --port 8765
 ```
 
-Models: `tiny` / `base` (default) / `small` / `medium`. Check: `curl -s localhost:8765/health`.
+Models: `tiny` / `base` / `small` (default) / `medium`. Check: `curl -s localhost:8765/health`.
 
 Without a microphone you can exercise the whole pipeline on a prepared WAV:
 
@@ -104,7 +104,7 @@ TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-tal
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
 | `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/empty (auto) | `ru` |
 | `OPENAI_API_KEY` | key for the `api` backend | — |
-| `WHISPER_MODEL` | model for the plugin's local backend | `base` |
+| `WHISPER_MODEL` | model for the plugin's local backend | `small` |
 | `WHISPER_BEAM_SIZE` | decoder beam size (`1` = greedy, fastest) | `1` |
 | `WHISPER_VAD` | voice-activity filter (`1`/`0`) | `1` |
 | `WHISPER_INITIAL_PROMPT` | context hint for Whisper | empty (off) |

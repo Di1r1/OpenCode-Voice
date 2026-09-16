@@ -140,7 +140,7 @@ async function hasVosk($: any): Promise<boolean> {
 
 async function transcribeFasterWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
-  const modelSize = process.env.WHISPER_MODEL || "base"
+  const modelSize = process.env.WHISPER_MODEL || "small"
   // Python ждёт None, а не null — поэтому маппим auto -> None явно.
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
   const initialPrompt = process.env.WHISPER_INITIAL_PROMPT || ""
@@ -196,7 +196,7 @@ async function transcribeWhisperCpp(opts: { file: string; language: string; $: a
 async function transcribePythonWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
-  const modelSize = process.env.WHISPER_MODEL || "base"
+  const modelSize = process.env.WHISPER_MODEL || "small"
   const code = `
 import whisper, sys, json
 model = whisper.load_model(${JSON.stringify(modelSize)})

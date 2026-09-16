@@ -546,7 +546,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenCode Voice STT Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
-    parser.add_argument("--model", default="base", help="Whisper model size (tiny, base, small, medium, large)")
+    parser.add_argument("--model", default="small", help="Whisper model size (tiny, base, small, medium, large)")
     parser.add_argument("--device", default="cpu", help="Device (cpu, cuda)")
     parser.add_argument("--compute-type", default="int8", help="Compute type (int8, float16, float32)")
     args = parser.parse_args()
