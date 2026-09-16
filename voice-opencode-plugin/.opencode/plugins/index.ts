@@ -20,7 +20,7 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
   console.log("[voice-plugin] Plugin loaded!")
-  const { config, STT_BACKENDS, STT_LANGUAGES, DEFAULTS } = await import("../../src/lib/config")
+  const { config, STT_LANGUAGES, DEFAULTS } = await import("../../src/lib/config")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
@@ -128,7 +128,6 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
       // /voice — push-to-talk: запись микрофона -> распознавание -> вставка в prompt.
       // recordPushToTalk возвращает путь к WAV, а не текст.
-      let recordingToastId = 0
       showToast("🎙 Запись: 0 сек")
       try {
         const { recordPushToTalk } = await import("../../src/lib/recorder")

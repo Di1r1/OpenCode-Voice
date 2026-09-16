@@ -189,11 +189,26 @@ async function startCapture() {
   }
 
   // 2. Запись на сервере (WSL PulseAudio)
+  const startReq = () => fetch(`${STT_SERVER}/record/start`, { method: 'POST' });
+  const stopReq = () => fetch(`${STT_SERVER}/record/stop`, { method: 'POST' });
+
   let res;
   try {
-    res = await fetch(`${STT_SERVER}/record/start`, { method: 'POST' });
+    res = await startReq();
   } catch (e) {
     throw new Error(`нет микрофона — браузер недоступен, STT-сервер не отвечает (${e.message})`);
+  }
+
+  // 409 = на сервере осталась «зависшая» запись с прошлого раза (клиент не вызвал
+  // /record/stop). Сбрасываем её и пробуем стартовать заново.
+  if (res.status === 409) {
+    log('Сервер уже пишет — сбрасываю зависшую запись и пробую снова');
+    try { await stopReq(); } catch {}
+    try {
+      res = await startReq();
+    } catch (e) {
+      throw new Error(`STT-сервер не отвечает (${e.message})`);
+    }
   }
 
   if (res.status === 409) {
@@ -238,6 +253,14 @@ async function stopServerCapture() {
 let captureSession = null;  // {mode, stream, recorder, chunks}
 let stopSignal = null;      // resolve() для остановки
 let uiPhase = 'idle';       // idle | recording | processing
+
+// При уходе со страницы не оставляем серверную запись висеть (иначе следующий
+// /record/start получит 409 «already recording»).
+window.addEventListener('pagehide', () => {
+  if (uiPhase === 'recording' && captureSession?.mode === 'server') {
+    try { fetch(`${STT_SERVER}/record/stop`, { method: 'POST', keepalive: true }); } catch {}
+  }
+});
 
 function applyButtonState(btn) {
   if (!btn) return;

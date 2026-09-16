@@ -43,10 +43,6 @@ def _cors(resp):
 if not os.getenv("PULSE_SERVER") and os.path.exists("/mnt/wslg/PulseServer"):
     os.environ["PULSE_SERVER"] = "unix:/mnt/wslg/PulseServer"
 
-# Local backend (OpenAI API optional)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-WHISPER_BACKEND = os.getenv("OPENCODE_VOICE_BACKEND", "local")  # local | api
-
 # Model will be loaded in main()
 model = None
 MODEL_SIZE = "small"
@@ -79,6 +75,17 @@ MAX_SECONDS = int(os.getenv("OPENCODE_VOICE_MAX_SECONDS", "120"))
 # сразу, поэтому одного роста файла недостаточно — см. _wait_for_audio).
 START_AUDIO_TIMEOUT = float(os.getenv("OPENCODE_VOICE_START_AUDIO_TIMEOUT", "2.5"))
 MIN_AUDIO_BYTES = 4000
+
+# Авто-восстановление аудиоканала WSLg при «молчащем» источнике (мёртвый
+# канал audin / зависший PulseAudio). Перезапускает weston+pulseaudio через
+# interop; GUI WSLg при этом перезапускается. Отключается:
+#   OPENCODE_VOICE_AUTO_RECOVER=0
+AUTO_RECOVER = os.getenv("OPENCODE_VOICE_AUTO_RECOVER", "1").lower() not in (
+    "0", "false", "no", "off", "",
+)
+RECOVER_COOLDOWN = float(os.getenv("OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN", "90"))
+WSL_EXE = os.getenv("WSL_EXE", "/mnt/c/Windows/System32/wsl.exe")
+_last_recover = 0.0
 
 # Test mode: use a fixture WAV instead of a real microphone.
 # Позволяет проверить весь пайплайн без аудиоустройства.
@@ -250,6 +257,36 @@ def _arm_watchdog(proc):
     _rec_timer.start()
 
 
+def _wslg_restart():
+    """Пересоздать аудиоканал WSLg: перезапустить weston и pulseaudio.
+
+    Делается через interop в системном дистрибутиве WSLg (WSLGd поднимает
+    процессы заново). GUI WSLg (Wayland-окна) при этом перезапустится.
+    Возвращает True, если команды удалось выполнить (без гарантии, что
+    микрофон заработал).
+    """
+    if not os.path.exists(WSL_EXE):
+        logger.warning("Авто-восстановление: не найден %s", WSL_EXE)
+        return False
+    try:
+        subprocess.run(
+            [WSL_EXE, "--system", "-e", "sh", "-lc", "pkill -9 -x weston"],
+            timeout=30, check=False,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(float(os.getenv("WSLG_RESTART_WESTON_WAIT", "8")))
+        subprocess.run(
+            [WSL_EXE, "--system", "-e", "sh", "-lc", "pkill -9 -x pulseaudio"],
+            timeout=30, check=False,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(float(os.getenv("WSLG_RESTART_PULSE_WAIT", "5")))
+        return True
+    except Exception as e:
+        logger.warning("Авто-восстановление WSLg не удалось: %s", e)
+        return False
+
+
 def _reap_if_done():
     """Если рекордер уже завершился сам (лимит -d, ошибка) — освободить состояние.
 
@@ -277,7 +314,7 @@ def _reap_if_done():
 
 @app.route("/record/start", methods=["POST"])
 def record_start():
-    global _rec_proc, _rec_file, _rec_start
+    global _rec_proc, _rec_file, _rec_start, _last_recover
     with _rec_lock:
         _reap_if_done()
         if _rec_proc is not None:
@@ -293,36 +330,62 @@ def record_start():
             logger.info(f"[fake] Recording started (fixture: {FAKE_AUDIO})")
             return jsonify({"status": "recording", "fake": True, "since": _rec_start})
 
-        _rec_file = tempfile.mktemp(suffix=".wav")
-        cmd = _record_cmd(_rec_file)
-        if cmd is None:
-            _rec_file = None
-            return jsonify({"error": "no recorder (arecord/ffmpeg/sox) found"}), 500
+        last_size = 0
+        for attempt in range(2):
+            _rec_file = tempfile.mktemp(suffix=".wav")
+            cmd = _record_cmd(_rec_file)
+            if cmd is None:
+                _rec_file = None
+                return jsonify({"error": "no recorder (arecord/ffmpeg/sox) found"}), 500
 
-        logger.info(f"Recording -> {' '.join(cmd)}")
+            logger.info(f"Recording -> {' '.join(cmd)}")
 
-        try:
-            _rec_proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                preexec_fn=os.setsid,
-            )
-        except Exception as e:
-            _rec_proc = None
-            return jsonify({"error": str(e)}), 500
+            try:
+                _rec_proc = subprocess.Popen(
+                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    preexec_fn=os.setsid,
+                )
+            except Exception as e:
+                _rec_proc = None
+                _rec_file = None
+                return jsonify({"error": str(e)}), 500
 
-        # Дожидаемся реальных данных, а не только WAV-заголовка. Если рекордер
-        # подключился, но звук не идёт (зависший PulseAudio / мёртвый канал
-        # микрофона RDP audin) — честно сообщаем об этом, а не «записываем».
-        ok, size = _wait_for_audio(_rec_file, _rec_proc, START_AUDIO_TIMEOUT)
-        if not ok:
+            # Дожидаемся реальных данных, а не только WAV-заголовка. Если рекордер
+            # подключился, но звук не идёт (мёртвый канал audin / зависший
+            # PulseAudio) — один раз пробуем пересоздать аудиоканал и повторить.
+            ok, last_size = _wait_for_audio(_rec_file, _rec_proc, START_AUDIO_TIMEOUT)
+            if ok:
+                _arm_watchdog(_rec_proc)
+                return jsonify({"status": "recording", "since": _rec_start})
+
             died = _rec_proc.poll() is not None
             raw = ""
             if died:
                 try:
-                    err = _rec_proc.stderr.read() or b""
-                    raw = err.decode("utf-8", "replace").strip()
+                    raw = (_rec_proc.stderr.read() or b"").decode("utf-8", "replace").strip()
                 except Exception:
                     pass
+
+            can_recover = (
+                attempt == 0
+                and AUTO_RECOVER
+                and not died
+                and not raw
+                and (time.time() - _last_recover) >= RECOVER_COOLDOWN
+            )
+            _kill_recorder(_rec_proc)
+            _rec_proc = None
+            _rec_file = None
+
+            if can_recover:
+                logger.warning(
+                    "Аудиоисточник молчит — пересоздаю WSLg-аудиоканал "
+                    "(weston+pulseaudio) и повторяю попытку"
+                )
+                _last_recover = time.time()
+                if _wslg_restart():
+                    continue
+
             if raw:
                 msg = _friendly_rec_error(raw)
             elif died:
@@ -333,22 +396,17 @@ def record_start():
             else:
                 msg = (
                     "Аудиоисточник молчит: рекордер подключился, но данных нет "
-                    f"(получено {size} байт). WSLg передаёт микрофон через канал "
+                    f"(получено {last_size} байт). WSLg передаёт микрофон через канал "
                     "audin — похоже, он отвалился. Проверь доступ приложения к "
                     "микрофону в Windows (Параметры → Конфиденциальность → "
                     "Микрофон); в RDP-сессии включи «Запись с этого компьютера». "
                     "Если не помогло — перезапусти WSL: wsl --shutdown. "
                     "Проверка: arecord -D pulse -f cd -d 2 /tmp/t.wav"
                 )
-            _kill_recorder(_rec_proc)
-            _rec_proc = None
-            _rec_file = None
             logger.error(f"Recorder failed: {msg}")
             return jsonify({"error": msg}), 500
 
-        _arm_watchdog(_rec_proc)
-
-    return jsonify({"status": "recording", "since": _rec_start})
+    return jsonify({"error": "recorder failed"}), 500
 
 
 @app.route("/record/status", methods=["GET"])

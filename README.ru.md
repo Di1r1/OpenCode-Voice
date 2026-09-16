@@ -110,6 +110,7 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
 | `OPENCODE_VOICE_MAX_SECONDS` | максимум записи на сервере | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
+| `OPENCODE_VOICE_AUTO_RECOVER` | авто-пересоздание аудиоканала WSLg при молчащем источнике | `1` |
 | `PULSE_SERVER` | сокет PulseAudio | авто `/mnt/wslg/PulseServer` |
 
 На коротких фразах авто-определение языка ограничено: если обычно говорите на одном языке, надёжнее задать его явно (`OPENCODE_VOICE_LANGUAGE=ru`).
@@ -128,7 +129,15 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer pactl info
 PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -r 16000 -c 1 -t wav -d 3 /tmp/t.wav
 ```
 
-**Быстрый фикс без `wsl --shutdown`** (пересоздаёт внутренний RDP-канал WSLg). Выполнять из WSL:
+**Быстрый фикс:** запусти скрипт (пересоздаёт внутренний RDP-канал WSLg — перезапускает weston и pulseaudio):
+
+```bash
+bash voice-opencode-plugin/fix-mic.sh
+```
+
+STT-сервер умеет самовосстанавливаться: при молчащем источнике он один раз пересоздаёт аудиоканал WSLg и повторяет запись (отключается через `OPENCODE_VOICE_AUTO_RECOVER=0`).
+
+Те же шаги вручную (без `wsl --shutdown`), выполнять из WSL:
 
 ```bash
 # 1. пересоздать RDP-сессию WSLg (WSLGd сам поднимет weston); GUI WSLg перезапустится
@@ -152,6 +161,7 @@ voice-opencode-plugin/
 ├── stt-server/              # Flask + faster-whisper: stt_server.py, test_stt_server.py
 ├── extension/               # Chrome-расширение (MV3)
 ├── voice-button.user.js     # userscript
+├── fix-mic.sh               # пересоздание аудиоканала WSLg (фикс микрофона)
 ├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts
 ├── opencode.json            # подключение плагина + агенты
 ├── tui.json                 # TUI/web-плагины + хоткеи

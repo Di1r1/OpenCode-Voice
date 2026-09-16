@@ -16,7 +16,7 @@
  * чтобы плагин не "завис". Для тестирования используй /voice <file.wav>.
  */
 
-import { statSync, unlinkSync } from "node:fs"
+import { statSync } from "node:fs"
 
 export interface PttOptions {
   $: any
@@ -48,27 +48,6 @@ async function which($: any, cmd: string): Promise<string | null> {
   try { await $`test -x /usr/bin/${cmd}`.quiet(); return `/usr/bin/${cmd}` } catch {}
   try { await $`test -x /bin/${cmd}`.quiet(); return `/bin/${cmd}` } catch {}
   return null
-}
-
-async function hasFfmpeg($: any): Promise<boolean> {
-  return !!(await which($, "ffmpeg"))
-}
-
-async function hasArecord($: any): Promise<boolean> {
-  return !!(await which($, "arecord"))
-}
-
-async function hasSox($: any): Promise<boolean> {
-  return !!(await which($, "sox")) || !!(await which($, "rec"))
-}
-
-async function hasPythonSdt($: any): Promise<boolean> {
-  try {
-    const out = await $`python3 -c "import sounddevice, numpy; print('ok')"`.text()
-    return out.includes("ok")
-  } catch {
-    return false
-  }
 }
 
 export async function recordPushToTalk(options: PttOptions): Promise<string> {
