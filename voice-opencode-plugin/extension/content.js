@@ -5,7 +5,10 @@
 // (важно при доступе через WSL2 IP, а не localhost).
 const STT_PORT = 8765;
 const MAX_UPLOAD_MB = 25;
-const STT_SERVER = `${location.protocol}//${location.hostname}:${STT_PORT}`;
+// localhost на Windows может резолвиться в IPv6 ::1, а сервер слушает 127.0.0.1 —
+// поэтому для локального случая всегда используем 127.0.0.1 (для LAN/IP не меняем).
+const STT_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.hostname;
+const STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
 const LOG_PREFIX = '[OpenCode Voice]';
 
 function log(...args) {
@@ -476,7 +479,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.9 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.10 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

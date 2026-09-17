@@ -123,7 +123,7 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f S16_LE -r 16000 -c 1
 
 ## Логи
 
-- Content script: `F12` → Console → фильтр `[OpenCode Voice]` (там же версия расширения и версия сервера, 1.0.9).
+- Content script: `F12` → Console → фильтр `[OpenCode Voice]` (там же версия расширения и версия сервера, 1.0.10).
 
 ## Защита от перегрузки
 

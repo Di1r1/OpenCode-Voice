@@ -1,6 +1,6 @@
 // OpenCode Voice - Popup Script
 
-const STT_SERVER = 'http://localhost:8765';
+const STT_SERVER = 'http://127.0.0.1:8765';
 const statusEl = document.getElementById('status');
 const testBtn = document.getElementById('testBtn');
 const openBtn = document.getElementById('openBtn');
