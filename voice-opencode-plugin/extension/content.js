@@ -172,7 +172,17 @@ function findToolbar(input) {
 
 // Звуковая индикация (как в /voice): сигнал проигрывает STT-сервер в WSL
 // (880 Гц — старт, 520 Гц — конец записи, 660 Гц — распознавание завершено).
+// Отключается переключателем в popup расширения (chrome.storage.local.beeps).
+let beepsEnabled = true;
+try {
+  chrome.storage.local.get({ beeps: true }, (v) => { beepsEnabled = v.beeps !== false; });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.beeps) beepsEnabled = changes.beeps.newValue !== false;
+  });
+} catch {}
+
 function beep(freq = 880) {
+  if (!beepsEnabled) return;
   try {
     fetch(`${STT_SERVER}/beep?freq=${freq}`, { method: 'GET' }).catch(() => {});
   } catch {}
@@ -431,6 +441,6 @@ log('Content script loaded, waiting for UI...');
 // Диагностика: подтверждаем, что загружена именно эта версия (видно в консоли
 // страницы и в логе STT-сервера как beep freq=0).
 try {
-  console.log('[OpenCode Voice] content.js v1.0.4 loaded');
+  console.log('[OpenCode Voice] content.js v1.0.5 loaded');
   fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET' }).catch(() => {});
 } catch {}

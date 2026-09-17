@@ -4,6 +4,25 @@ const STT_SERVER = 'http://localhost:8765';
 const statusEl = document.getElementById('status');
 const testBtn = document.getElementById('testBtn');
 const openBtn = document.getElementById('openBtn');
+const beepsEl = document.getElementById('beeps');
+const beepTestBtn = document.getElementById('beepTestBtn');
+
+// Настройка «звуковые сигналы» (хранится в chrome.storage.local, читается content.js)
+chrome.storage.local.get({ beeps: true }, (v) => {
+  beepsEl.checked = v.beeps !== false;
+});
+beepsEl.addEventListener('change', () => {
+  chrome.storage.local.set({ beeps: beepsEl.checked });
+});
+
+beepTestBtn.addEventListener('click', async () => {
+  try {
+    await fetch(`${STT_SERVER}/beep?freq=880`);
+  } catch {
+    statusEl.textContent = `❌ STT сервер недоступен`;
+    statusEl.className = 'status error';
+  }
+});
 
 async function checkServer() {
   try {
