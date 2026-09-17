@@ -156,7 +156,7 @@ Replace `/ABS/PATH` with the absolute path to the cloned repo (e.g. `/home/you/O
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. **Load unpacked** → select the `voice-opencode-plugin/extension` folder.
 3. Open the OpenCode web UI — the 🎤 button appears next to the input field.
-4. Optional: **hold `Alt+Z`** on the OpenCode page for push-to-talk — recording runs while you hold the keys, release to stop and transcribe (works only on the OpenCode page). The combo is configurable in the extension popup (`Alt+Z`, `Ctrl+Shift+Z`, `Alt+Q`, `F9`); press the modifier first, then the key, and release in any order (Escape cancels).
+4. Optional: **hold `Alt+Z`** on the OpenCode page for push-to-talk — recording runs while you hold the keys, release to stop and transcribe (works only on the OpenCode page). The combo is configurable in the extension popup (`Alt+Z`, `Ctrl+Shift+Z`, `Alt+Q`, `F9`); press the modifier first, then the key, and release in any order (Escape cancels). **Hold `Alt+X`** does the same but sends the request immediately (bypassing the input box; append-and-send if the field already has text) — can be turned off in the popup.
 
 The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` lists `localhost`/`127.0.0.1`; add your host to `host_permissions` if it differs. Optional settings in the popup: **access token** and **sound beeps**.
 

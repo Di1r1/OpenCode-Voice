@@ -45,6 +45,15 @@ hotkeyEl.addEventListener('change', () => {
   chrome.storage.local.set({ hotkey: hotkeyEl.value });
 });
 
+// Alt+X: запись + немедленная отправка (второй хоткей).
+const sendHotkeyEl = document.getElementById('sendHotkey');
+chrome.storage.local.get({ sendHotkey: true }, (v) => {
+  sendHotkeyEl.checked = v.sendHotkey !== false;
+});
+sendHotkeyEl.addEventListener('change', () => {
+  chrome.storage.local.set({ sendHotkey: sendHotkeyEl.checked });
+});
+
 beepTestBtn.addEventListener('click', async () => {
   try {
     await fetch(`${STT_SERVER}/beep?freq=880`, { headers: authHeaders() });

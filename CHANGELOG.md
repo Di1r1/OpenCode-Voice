@@ -32,6 +32,9 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   the following keyup to the browser menu), on **Escape**, on blur/hidden, and via a 120 s safety
   timeout. Extension `1.0.14` (a very short hold is stopped right after start instead of leaving a
   dangling recording).
+- **Send-immediately hotkey `Alt+X` (extension `1.0.15`):** same push-to-talk, but the transcript is
+  sent right away instead of only being inserted (append-and-send when the input already has text).
+  Can be disabled in the popup.
 - **One-command installer `setup.sh`**: checks dependencies, installs `stt-server/requirements.txt`
   (CPU path via faster-whisper), runs `sync-plugin.sh`, prints the `opencode.json`/`tui.json` lines to
   add (or patches them with `--write-config`, backup included) and runs `doctor.sh`. `--gpu` builds

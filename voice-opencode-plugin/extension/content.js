@@ -176,6 +176,25 @@ function findToolbar(input) {
   return { parent: form, before: null };
 }
 
+// Отправить текущее содержимое поля ввода (кнопка «Отправить» или Enter).
+// Используется хоткеем Alt+X, чтобы не набирать текст руками.
+async function submitPrompt() {
+  const input = foundInput || findPromptInput();
+  if (!input) return false;
+  // Дать фреймворку включить кнопку отправки после события input.
+  await new Promise((r) => setTimeout(r, 300));
+  const { before } = findToolbar(input);
+  if (before && !before.disabled && before.getAttribute('aria-disabled') !== 'true') {
+    before.click();
+    return true;
+  }
+  const opts = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true };
+  input.dispatchEvent(new KeyboardEvent('keydown', opts));
+  input.dispatchEvent(new KeyboardEvent('keypress', opts));
+  input.dispatchEvent(new KeyboardEvent('keyup', opts));
+  return true;
+}
+
 // --- Гибридная запись: микрофон браузера, при неудаче — сервер WSL ---
 
 // Звуковая индикация (как в /voice): сигнал проигрывает STT-сервер в WSL
@@ -363,28 +382,39 @@ const HOTKEYS = {
 };
 const DEFAULT_HOTKEY = 'alt+z';
 const HOTKEY_MAX_MS = 120000; // safety net: never leave a recording running forever
+// Separate hold combo: record, insert and send at once (bypasses the input box).
+const SEND_HOTKEY = { label: 'Alt+X', code: 'KeyX', alt: true };
 let hotkey = HOTKEYS[DEFAULT_HOTKEY];
 let hotkeyActive = false;
 let hotkeyStopPending = false;
 let hotkeySafetyTimer = null;
+let activeHotkey = null;      // combo currently held (configured one or Alt+X)
+let hotkeyMode = 'insert';    // 'insert' | 'send' for the current recording
+let sendHotkeyEnabled = true;
 
-chrome.storage.local.get({ hotkey: DEFAULT_HOTKEY }, (v) => {
+chrome.storage.local.get({ hotkey: DEFAULT_HOTKEY, sendHotkey: true }, (v) => {
   hotkey = HOTKEYS[v.hotkey] || HOTKEYS[DEFAULT_HOTKEY];
+  sendHotkeyEnabled = v.sendHotkey !== false;
 });
 chrome.storage.onChanged.addListener((ch) => {
   if (ch.hotkey) hotkey = HOTKEYS[ch.hotkey.newValue] || HOTKEYS[DEFAULT_HOTKEY];
+  if (ch.sendHotkey) sendHotkeyEnabled = ch.sendHotkey.newValue !== false;
 });
 
 function hotkeyButton() {
   return document.querySelector('#opencode-voice-btn');
 }
 
+function comboMatches(e, c) {
+  return e.code === c.code
+    && !!e.altKey === !!c.alt
+    && !!e.ctrlKey === !!c.ctrl
+    && !!e.shiftKey === !!c.shift
+    && !!e.metaKey === !!c.meta;
+}
+
 function hotkeyMatches(e) {
-  return e.code === hotkey.code
-    && !!e.altKey === !!hotkey.alt
-    && !!e.ctrlKey === !!hotkey.ctrl
-    && !!e.shiftKey === !!hotkey.shift
-    && !!e.metaKey === !!hotkey.meta;
+  return comboMatches(e, hotkey);
 }
 
 function hotkeyStop(reason) {
@@ -415,27 +445,40 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (e.repeat || !hotkeyMatches(e)) return;
+  if (e.repeat) return;
+  let combo = null;
+  let mode = 'insert';
+  if (hotkeyMatches(e)) {
+    combo = hotkey;
+  } else if (sendHotkeyEnabled && comboMatches(e, SEND_HOTKEY)) {
+    combo = SEND_HOTKEY;
+    mode = 'send';
+  }
+  if (!combo) return;
   const btn = hotkeyButton();
   if (!btn) return;
   e.preventDefault();
   e.stopPropagation();
   if (uiPhase !== 'idle') return;
   hotkeyActive = true;
+  activeHotkey = combo;
+  hotkeyMode = mode;
   hotkeyStopPending = false;
   hotkeySafetyTimer = setTimeout(() => hotkeyStop('safety-timeout'), HOTKEY_MAX_MS);
-  log(`Hotkey: start (hold ${hotkey.label})`);
+  log(`Hotkey: start (hold ${combo.label}${mode === 'send' ? ', send' : ''})`);
   onVoiceClick(btn);
 }, true);
 
 window.addEventListener('keyup', (e) => {
-  if (!hotkeyActive) return;
+  if (!hotkeyActive || !activeHotkey) return;
   // Stop on the hotkey itself or on releasing Alt first: Windows/Chrome can route
   // the Alt keyup (and the following keyup) to the browser menu, so the page never
-  // sees the Z keyup and the recording would hang.
-  if (e.code === hotkey.code || e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+  // sees the second key's keyup and the recording would hang.
+  const matchedKey = e.code === activeHotkey.code;
+  const releasedAlt = activeHotkey.alt && (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight');
+  if (matchedKey || releasedAlt) {
     e.preventDefault();
-    hotkeyStop(e.code === hotkey.code ? 'keyup' : 'modifier-release');
+    hotkeyStop(matchedKey ? 'keyup' : 'modifier-release');
   }
 }, true);
 
@@ -448,6 +491,9 @@ document.addEventListener('visibilitychange', () => {
 async function runRecordingFlow(btn) {
   uiPhase = 'recording';
   applyButtonState(btn);
+  // Alt+X (или галочка в popup) — после распознавания сразу отправляем запрос.
+  const sendAfter = hotkeyMode === 'send';
+  hotkeyMode = 'insert';
 
   // Старт захвата
   try {
@@ -503,7 +549,14 @@ async function runRecordingFlow(btn) {
 
     if (text) {
       beep(660);
-      if (insertText(text)) showToast(`✅ Готово: "${text.slice(0, 60)}"`, 'success');
+      if (insertText(text)) {
+        if (sendAfter) {
+          const ok = await submitPrompt();
+          showToast(ok ? `📨 Отправлено: "${text.slice(0, 60)}"` : `✅ Готово: "${text.slice(0, 60)}"`, ok ? 'success' : 'warning');
+        } else {
+          showToast(`✅ Готово: "${text.slice(0, 60)}"`, 'success');
+        }
+      }
     } else {
       showToast('Речь не распознана', 'warning');
     }
@@ -582,7 +635,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.14 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.15 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())
