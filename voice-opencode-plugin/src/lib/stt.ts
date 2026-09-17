@@ -7,10 +7,22 @@
  *        Если ни одно не доступно — бросает понятную ошибку.
  */
 
-import { existsSync } from "node:fs"
+import { appendFileSync, existsSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { config } from "./config"
+
+// Диагностика: какой бэкенд реально использовался (`/tmp/opencode/voice-stt.log`).
+function note(backend: string, info: string): void {
+  try {
+    appendFileSync(
+      "/tmp/opencode/voice-stt.log",
+      `${new Date().toISOString()} ${backend} ${info}\n`,
+    )
+  } catch {
+    // диагностика best-effort
+  }
+}
 
 // whisper.cpp CLI (для GPU-режима; см. раздел GPU в README).
 const WHISPER_CPP_BIN = process.env.WHISPER_CPP_BIN ||
@@ -164,6 +176,7 @@ async function hasVosk($: any): Promise<boolean> {
 async function transcribeFasterWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
   const modelSize = process.env.WHISPER_MODEL || "small"
+  note("faster-whisper", `${modelSize} ${file}`)
   // Python ждёт None, а не null — поэтому маппим auto -> None явно.
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
   const initialPrompt = process.env.WHISPER_INITIAL_PROMPT || ""
@@ -200,6 +213,7 @@ print("".join(s.text for s in segments))
 async function transcribeWhisperCpp(opts: { file: string; language: string; $: any; cli: string; model?: string }): Promise<string> {
   const { file, language, $, cli } = opts
   const model = opts.model || process.env.WHISPER_MODEL_PATH || "./models/ggml-base.bin"
+  note("whispercpp", `${cli} ${model}`)
   const lang = language && language !== "auto" ? language : "auto"
   // CUDA-рантайм + драйвер WSL должны быть в LD_LIBRARY_PATH.
   const ld = [
