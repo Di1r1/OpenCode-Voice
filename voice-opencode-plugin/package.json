@@ -20,7 +20,6 @@
     ".opencode/tui",
     ".opencode/web",
     ".opencode/commands",
-    ".opencode/agents",
     "doctor.sh",
     "fix-mic.sh",
     "setup.sh",

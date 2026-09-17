@@ -183,7 +183,7 @@ bash voice-opencode-plugin/doctor.sh
 ## 10. Скиллы и агенты (если настроены локально)
 
 - Скиллы `ovi-overview`, `ovi-plugin`, `ovi-server`, `ovi-extension`, `ovi-models`, `ovi-debug`, `ovi-dev` — в `.opencode/skills/` (генерируемая, git-ignored часть; подхватываются только если путь виден OpenCode).
-- Агенты `voice-builder`, `voice-stt` — в проектном `voice-opencode-plugin/opencode.json` (`@voice-builder`, `@voice-stt` в TUI).
+- Агенты `voice-builder`, `voice-stt` — опциональные локальные dev-агенты из `.opencode/agents/` (в git и npm-пакет не входят); в TUI — `@voice-builder`, `@voice-stt`.
 
 ---
 

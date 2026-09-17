@@ -29,7 +29,7 @@
 - **Chrome/Chromium** — для кнопки 🎤 в веб-интерфейсе (TUI работает и без неё).
 - Опционально: NVIDIA GPU с WSL-совместимым драйвером — для `whisper.cpp` + CUDA.
 
-> **Что генерируется, а что версионируется в `.opencode/`.** `sync-plugin.sh` создаёт только `voice-opencode-plugin/.opencode/plugins/index.ts` (копия `src/index.ts` с правкой импортов) — этот файл в `.gitignore`, поэтому запускайте синк после каждого клона и после правок `src/index.ts`. Остальное версионируется: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`, `.opencode/agents/`.
+> **Что генерируется, а что версионируется в `.opencode/`.** `sync-plugin.sh` создаёт только `voice-opencode-plugin/.opencode/plugins/index.ts` (копия `src/index.ts` с правкой импортов) — этот файл в `.gitignore`, поэтому запускайте синк после каждого клона и после правок `src/index.ts`. Остальное версионируется: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`. `.opencode/agents/` — опциональные локальные dev-агенты: в git и npm-пакет не входят.
 
 ## Установка
 

@@ -29,7 +29,7 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 - **Chrome/Chromium** — for the 🎤 button in the web UI (the TUI works without it).
 - Optional: an NVIDIA GPU with a WSL-capable driver, for `whisper.cpp` + CUDA.
 
-> **Generated vs versioned in `.opencode/`.** `sync-plugin.sh` generates `voice-opencode-plugin/.opencode/plugins/index.ts` (a copy of `src/index.ts` with rewritten imports) — that file is git-ignored, so run the sync step after every clone and after editing `src/index.ts`. Everything else is versioned: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`, `.opencode/agents/`.
+> **Generated vs versioned in `.opencode/`.** `sync-plugin.sh` generates `voice-opencode-plugin/.opencode/plugins/index.ts` (a copy of `src/index.ts` with rewritten imports) — that file is git-ignored, so run the sync step after every clone and after editing `src/index.ts`. Everything else is versioned: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`. `.opencode/agents/` is optional and local-only (personal dev agents) — it is neither committed nor published.
 
 ## Installation
 
