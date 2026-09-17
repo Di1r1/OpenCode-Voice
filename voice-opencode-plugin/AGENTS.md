@@ -22,7 +22,7 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 
 ## Skill routing
 
-Load the matching skill (tool `skill`) **before** working on an area. Skills live in `.opencode/skills/` and are versioned (the rest of `.opencode/` is generated and git-ignored); OpenCode discovers them via `skills.paths` in the global config, so a restart is needed after adding one.
+Load the matching skill (tool `skill`) **before** working on an area. Skills live in `.opencode/skills/` and are versioned (the rest of `.opencode/` is generated and git-ignored); OpenCode discovers them via `skills.paths` in the global config, so a restart is needed after adding one. How to add/register/diagnose skills: [`SKILLS_GUIDE.md`](SKILLS_GUIDE.md).
 
 | Task / area | Skill |
 | --- | --- |
