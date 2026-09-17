@@ -170,6 +170,30 @@ function findToolbar(input) {
 
 // --- Гибридная запись: микрофон браузера, при неудаче — сервер WSL ---
 
+// Звуковая индикация (как в /voice): 880 Гц — старт, 520 Гц — конец записи,
+// 660 Гц — распознавание завершено. Best-effort через Web Audio.
+let audioCtx = null;
+function beep(freq = 880, ms = 120) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const now = ctx.currentTime;
+    const dur = ms / 1000;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+    gain.gain.linearRampToValueAtTime(0, now + dur);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
+  } catch {}
+}
+
 async function startCapture() {
   // 1. Микрофон браузера (работает, когда Windows/RDP отдаёт микрофон)
   if (navigator.mediaDevices?.getUserMedia && window.MediaRecorder) {
@@ -314,6 +338,7 @@ async function runRecordingFlow(btn) {
     }
   }
 
+  beep(880);
   const isBrowser = captureSession.mode === 'browser';
   showToast(isBrowser ? '🎙 Запись (микрофон браузера)...' : '🎙 Запись (WSL)...', 'info', 5000);
 
@@ -330,6 +355,7 @@ async function runRecordingFlow(btn) {
   await new Promise((resolve) => { stopSignal = resolve; });
   stopSignal = null;
   clearInterval(timer);
+  beep(520);
 
   // Фаза распознавания
   uiPhase = 'processing';
@@ -342,6 +368,7 @@ async function runRecordingFlow(btn) {
       : await stopServerCapture();
 
     if (text) {
+      beep(660);
       if (insertText(text)) showToast(`✅ Готово: "${text.slice(0, 60)}"`, 'success');
     } else {
       showToast('Речь не распознана', 'warning');
