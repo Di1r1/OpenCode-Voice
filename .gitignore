@@ -13,3 +13,9 @@ voice-opencode-plugin/.opencode/*
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Internal dev docs / dead assets (kept locally, not published)
+/AUDIT.md
+voice-opencode-plugin/TEST_PLAN.md
+voice-opencode-plugin/extension/README.md
+voice-opencode-plugin/extension/icon.svg

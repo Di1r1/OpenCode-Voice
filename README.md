@@ -376,12 +376,11 @@ voice-opencode-plugin/
 ├── pytest.ini               # hermetic server tests
 ├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json)
 ├── AGENTS.md                # architecture notes for agents/contributors
-├── TEST_PLAN.md             # manual test plan
 ├── SKILLS_GUIDE.md          # how skills are wired: add/register/diagnose
 └── .opencode/               # plugins/index.ts is generated; skills/tui/web/commands/agents are versioned
 ```
 
-Repo root also contains `README.md`, `README.ru.md`, `AUDIT.md` (production-readiness audit), `CHANGELOG.md` (release history), `LICENSE`, and CI in `.github/workflows/ci.yml`.
+Repo root also contains `README.md`, `README.ru.md`, `CHANGELOG.md` (release history), `LICENSE`, and CI in `.github/workflows/ci.yml`.
 
 ## Development
 

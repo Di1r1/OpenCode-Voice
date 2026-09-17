@@ -376,12 +376,11 @@ voice-opencode-plugin/
 ├── pytest.ini               # герметичные тесты сервера
 ├── shared/                  # единый источник истины для TS+Python (stt-spec.json, strip-cases.json)
 ├── AGENTS.md                # заметки по архитектуре для агентов/контрибьюторов
-├── TEST_PLAN.md             # план ручного тестирования
 ├── SKILLS_GUIDE.md          # как подключены навыки: добавить/зарегистрировать/диагностировать
 └── .opencode/               # plugins/index.ts генерируется; skills/tui/web/commands/agents версионируются
 ```
 
-В корне репозитория также `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/ci.yml`.
+В корне репозитория также `README.md`, `README.ru.md`, `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/ci.yml`.
 
 ## Разработка
 
