@@ -28,7 +28,8 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
 ### Added
 - **Push-to-talk hotkey in the web UI:** hold **`Alt+Z`** on the OpenCode page to record while you
   hold the keys and transcribe on release (page-level `keydown`/`keyup` in `content.js`; stops on
-  window blur too). Works only where the 🎤 button is present. Extension `1.0.12`.
+  window blur too). Works only where the 🎤 button is present. Extension `1.0.13` (a very short hold is
+  stopped right after start instead of leaving a dangling recording).
 - **One-command installer `setup.sh`**: checks dependencies, installs `stt-server/requirements.txt`
   (CPU path via faster-whisper), runs `sync-plugin.sh`, prints the `opencode.json`/`tui.json` lines to
   add (or patches them with `--write-config`, backup included) and runs `doctor.sh`. `--gpu` builds

@@ -355,6 +355,7 @@ function onVoiceClick(btn) {
 // Push-to-talk hotkey: hold Alt+Z (page-level; only where the 🎤 button exists).
 const HOTKEY_CODE = 'KeyZ';
 let hotkeyActive = false;
+let hotkeyStopPending = false;
 
 function hotkeyButton() {
   return document.querySelector('#opencode-voice-btn');
@@ -363,8 +364,16 @@ function hotkeyButton() {
 function hotkeyStop() {
   if (!hotkeyActive) return;
   hotkeyActive = false;
+  if (uiPhase !== 'recording') return;
+  // Released before runRecordingFlow armed stopSignal (very short hold):
+  // remember it and stop right after the capture starts, otherwise the
+  // recording would keep running with no way to stop it.
+  if (!stopSignal) {
+    hotkeyStopPending = true;
+    return;
+  }
   const btn = hotkeyButton();
-  if (btn && uiPhase === 'recording' && stopSignal) onVoiceClick(btn);
+  if (btn) onVoiceClick(btn);
 }
 
 window.addEventListener('keydown', (e) => {
@@ -376,6 +385,7 @@ window.addEventListener('keydown', (e) => {
   e.stopPropagation();
   if (hotkeyActive || uiPhase !== 'idle') return;
   hotkeyActive = true;
+  hotkeyStopPending = false;
   log('Hotkey: start (hold Alt+Z)');
   onVoiceClick(btn);
 }, true);
@@ -424,7 +434,13 @@ async function runRecordingFlow(btn) {
   }, 1000);
 
   // Ждём второй клик
-  await new Promise((resolve) => { stopSignal = resolve; });
+  await new Promise((resolve) => {
+    stopSignal = resolve;
+    if (hotkeyStopPending) {
+      hotkeyStopPending = false;
+      resolve();
+    }
+  });
   stopSignal = null;
   clearInterval(timer);
   beep(520);
@@ -520,7 +536,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.12 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.13 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())
