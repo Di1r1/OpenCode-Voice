@@ -212,6 +212,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           showToast("🤷 Речь не распознана (только шум)", "error")
           throw new Error("ptt: речь не распознана")
         }
+        await beep($, 660, 120)
         append(text)
         output.parts.length = 0
         output.parts.push({ type: "text", text } as any)
