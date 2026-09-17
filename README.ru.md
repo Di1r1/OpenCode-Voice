@@ -100,11 +100,11 @@ cp models/ggml-medium.bin $DEST/
 ```bash
 cd voice-opencode-plugin
 npm install
-bash sync-plugin.sh     # после правок src/index.ts
+bash sync-plugin.sh     # создаёт .opencode/plugins/index.ts (в .gitignore) — нужно перед запуском
 npm run typecheck
 ```
 
-`opencode.json` уже подключает плагин (`./.opencode/plugins/index.ts`), `tui.json` — TUI/web-части. Запуск:
+`opencode.json` уже подключает плагин (`./.opencode/plugins/index.ts`), `tui.json` — TUI/web-части. Каталог `.opencode/` целиком в `.gitignore` и создаётся локально (там же skills, agents, commands), поэтому после клонирования выполни `sync-plugin.sh`. Запуск:
 
 ```bash
 export OPENCODE_VOICE_BACKEND=local OPENCODE_VOICE_LANGUAGE=ru PULSE_SERVER=unix:/mnt/wslg/PulseServer

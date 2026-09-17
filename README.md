@@ -100,11 +100,11 @@ The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` sho
 ```bash
 cd voice-opencode-plugin
 npm install
-bash sync-plugin.sh     # run after editing src/index.ts
+bash sync-plugin.sh     # generates .opencode/plugins/index.ts (gitignored) — required before start
 npm run typecheck
 ```
 
-`opencode.json` already loads the plugin (`./.opencode/plugins/index.ts`); `tui.json` wires up the TUI/web parts. Start it:
+`opencode.json` already loads the plugin (`./.opencode/plugins/index.ts`); `tui.json` wires up the TUI/web parts. The whole `.opencode/` directory is gitignored and generated locally (skills, agents, commands live there too), so run `sync-plugin.sh` after cloning. Start it:
 
 ```bash
 export OPENCODE_VOICE_BACKEND=local OPENCODE_VOICE_LANGUAGE=ru PULSE_SERVER=unix:/mnt/wslg/PulseServer

@@ -23,8 +23,8 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-      - name: Verify .opencode/plugins/index.ts is in sync
-        run: bash sync-plugin.sh --check
+      - name: Generate .opencode/plugins/index.ts and verify it is deterministic
+        run: bash sync-plugin.sh && bash sync-plugin.sh --check
 
   server:
     name: STT server (Python)

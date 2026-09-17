@@ -31,6 +31,7 @@ if [[ "$MODE" == "--check" ]]; then
   exit 1
 fi
 
+mkdir -p "$(dirname "$DST")"
 cp "$TMP" "$DST"
 echo "Синхронизировано: src/index.ts -> .opencode/plugins/index.ts"
 grep -n 'import("' "$DST"

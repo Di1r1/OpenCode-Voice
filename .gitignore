@@ -1,0 +1,4 @@
+# Local OpenCode runtime artifacts for the voice plugin.
+# skills, the synced plugin copy (.opencode/plugins/index.ts), tui/web, agents and
+# commands are kept on disk only — regenerate the plugin copy with sync-plugin.sh.
+voice-opencode-plugin/.opencode/
