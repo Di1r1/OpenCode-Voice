@@ -7,10 +7,8 @@
  *   OPENCODE_VOICE_DEVICE    auto | gpu | cpu (по умолчанию auto: GPU, иначе CPU)
  *   OPENAI_API_KEY           ключ для облачного Whisper
  *   OPENCODE_VOICE_MODEL     модель Whisper (по умолчанию whisper-1)
- *   OPENCODE_VOICE_PTT_KEY   горячая клавиша для push-to-talk
  */
 
-export const STT_BACKENDS = ["local", "api"] as const
 export const STT_LANGUAGES = ["ru", "en", "auto"] as const
 export const STT_DEVICES = ["auto", "gpu", "cpu"] as const
 
@@ -19,10 +17,6 @@ export const DEFAULTS = {
   sttLanguage: "ru" as const,
   sttDevice: "auto" as const,
   whisperModel: "whisper-1",
-  sampleRate: 16000,
-  channels: 1,
-  bitsPerSample: 16,
-  pttKey: "ctrl+shift+v",
 }
 
 export const config = {
@@ -31,10 +25,4 @@ export const config = {
   sttDevice: (process.env.OPENCODE_VOICE_DEVICE || DEFAULTS.sttDevice) as string,
   whisperModel: process.env.OPENCODE_VOICE_MODEL || DEFAULTS.whisperModel,
   openaiApiKey: process.env.OPENAI_API_KEY || "",
-  sampleRate: Number(process.env.OPENCODE_VOICE_SAMPLE_RATE) || DEFAULTS.sampleRate,
-  channels: Number(process.env.OPENCODE_VOICE_CHANNELS) || DEFAULTS.channels,
-  bitsPerSample: Number(process.env.OPENCODE_VOICE_BITS_PER_SAMPLE) || DEFAULTS.bitsPerSample,
-  pttKey: process.env.OPENCODE_VOICE_PTT_KEY || DEFAULTS.pttKey,
-  // WSL2 / PulseAudio: проверять PULSE_SERVER вместо /proc/asound/cards
-  pulseServer: process.env.PULSE_SERVER || "",
 }

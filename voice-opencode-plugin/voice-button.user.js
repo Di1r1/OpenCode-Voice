@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         OpenCode Voice Button
+// @name         OpenCode Voice Button (DEPRECATED)
 // @namespace    http://tampermonkey.net/
 // @version      0.2
-// @description  Adds 🎤 button to OpenCode web UI for voice recording
+// @description  DEPRECATED: используйте Chrome-расширение (extension/) — оно поддерживает RAM-запись, бипы и настройки
 // @author       You
 // @match        http://127.0.0.1:*/*
 // @match        http://localhost:*/*
@@ -10,6 +10,10 @@
 // @match        http://192.168.*.*:*/*
 // @grant        none
 // ==/UserScript==
+
+// ВНИМАНИЕ: устарело. Расширение (extension/) полностью заменяет этот скрипт и
+// использует тот же id кнопки (#opencode-voice-btn) — не включайте оба одновременно.
+// Оставлено для совместимости; не обновляется.
 
 (function() {
     'use strict';

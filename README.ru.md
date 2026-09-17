@@ -117,9 +117,9 @@ opencode web --hostname 0.0.0.0
 
 Расширение обращается к STT-серверу по `http(s)://<host>:8765` (порт `STT_PORT` в `extension/content.js`). В `extension/manifest.json` уже прописаны `localhost`/`127.0.0.1`; при смене хоста добавьте его в `host_permissions`.
 
-### 5. Userscript (альтернатива расширению)
+### 5. Userscript (устарело)
 
-Установить `voice-button.user.js` в Tampermonkey (или аналог) — добавляет кнопку 🎤 без расширения.
+⚠️ `voice-button.user.js` — **deprecated**: оставлен только для совместимости и не обновляется. Используйте расширение Chrome: юзерскрипт работает со старым API, не умеет RAM-запись/бипы/настройки и использует тот же `id` кнопки, что и расширение (не включайте оба).
 
 ## Команды `/voice`
 

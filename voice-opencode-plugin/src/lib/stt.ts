@@ -82,11 +82,6 @@ export interface TranscribeOptions {
   device?: string
 }
 
-export interface TranscribeResult {
-  text: string
-  backend: "local" | "api"
-}
-
 export async function transcribe(opts: TranscribeOptions): Promise<string> {
   const { backend, language, file, $, device } = opts
 

@@ -35,14 +35,15 @@ ls -l /dev/snd/
 
 ### 2.2 Если ALSA доступна — тест записи
 ```bash
-# Запуск в WSL-хосте (без контейнера)
+# Запуск в WSL-хосте (без контейнера песочницы)
 export PATH="$HOME/.local/bin:$PATH"
 export OPENCODE_VOICE_BACKEND=local
+export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 opencode
-# В TUI: /voice  (начать запись, затем нажать Enter/пробел для остановки)
+# В TUI: /voice  — запись идёт фиксированные 30 секунд, затем распознавание
 ```
 
-**Ожидается:** запись сохраняется в `/tmp/voice-ptt-*.wav`, текст вставляется в prompt.
+**Ожидается:** запись сохраняется в `/dev/shm/opencode-voice/voice-ptt-*.wav` (RAM, tmpfs), текст вставляется в prompt. Файл удаляется автоматически через `OPENCODE_VOICE_RETAIN_SECONDS` (по умолчанию 300 с).
 
 ---
 

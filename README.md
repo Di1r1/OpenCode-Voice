@@ -117,9 +117,9 @@ opencode web --hostname 0.0.0.0
 
 The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` already lists `localhost`/`127.0.0.1`; if your host differs, add it to `host_permissions`.
 
-### 5. Userscript (extension alternative)
+### 5. Userscript (deprecated)
 
-Install `voice-button.user.js` in Tampermonkey (or similar) — it adds the 🎤 button with no extension needed.
+⚠️ `voice-button.user.js` is **deprecated** — it is kept for compatibility only and is not updated. Use the Chrome extension instead: the userscript talks to an older API, lacks RAM recording/beeps/settings, and uses the same button `id` as the extension (do not enable both).
 
 ## `/voice` commands
 

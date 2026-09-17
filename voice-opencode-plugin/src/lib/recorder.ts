@@ -1,11 +1,10 @@
 /**
- * Запись микрофона (push-to-talk) в фоновом режиме.
+ * Запись микрофона (push-to-talk).
  *
- * Почему фон: хуки opencode выполняются строго последовательно, поэтому вторая
- * команда не вызывается, пока не завершится первая. Схема:
- *   startPushToTalk()       — запускает детачированный рекордер, возвращает сессию сразу;
- *   stopPushToTalk(session) — SIGINT; рекордер финализирует WAV и выходит;
- *   waitPushToTalkEnd(...)  — фоновый обработчик ждёт выхода, затем распознаёт.
+ * Схема: startPushToTalk() запускает детачированный рекордер и возвращает сессию,
+ * waitPushToTalkEnd() ждёт его завершения. (Хуки opencode выполняются строго
+ * последовательно, поэтому остановка по второй команде невозможна — запись идёт
+ * фиксированное окно maxSeconds.)
  *
  * Бэкенд: arecord (в WSL самый надёжный — PulseAudio), иначе ffmpeg.
  */
@@ -120,14 +119,6 @@ export async function startPushToTalk($: any, opts: PttOptions = {}): Promise<Pt
   child.unref()
   if (!child.pid) throw new Error("не удалось запустить рекордер")
   return { file, pid: child.pid, backend }
-}
-
-export function stopPushToTalk(session: PttSession): void {
-  try {
-    process.kill(session.pid, "SIGINT")
-  } catch {
-    // процесс уже завершился
-  }
 }
 
 function isAlive(pid: number): boolean {
