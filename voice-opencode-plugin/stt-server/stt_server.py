@@ -187,6 +187,71 @@ def _schedule_delete(path: str):
     t.start()
 
 
+def _purge_old_files():
+    """Удалить аудио старше RETAIN_SECONDS (после перезапуска сервера)."""
+    try:
+        now = time.time()
+        for name in os.listdir(TMP_DIR):
+            p = os.path.join(TMP_DIR, name)
+            if name.startswith("beep-"):
+                continue
+            try:
+                if os.path.isfile(p) and (now - os.path.getmtime(p)) > RETAIN_SECONDS:
+                    os.unlink(p)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _beep_wav(freq: int, ms: int = 120, rate: int = 44100) -> str:
+    """Сгенерировать (и закэшировать) WAV-сигнал в RAM-каталоге."""
+    path = os.path.join(TMP_DIR, f"beep-{freq}-{ms}.wav")
+    if os.path.exists(path):
+        return path
+    try:
+        import math
+        import struct
+        import wave
+
+        os.makedirs(TMP_DIR, exist_ok=True)
+        n = int(rate * ms / 1000)
+        fade = max(1, int(rate * 0.005))
+        frames = bytearray()
+        for i in range(n):
+            env = min(1.0, i / fade, (n - i) / (fade * 2))
+            val = int(12000 * math.sin(2 * math.pi * freq * i / rate) * env)
+            frames += struct.pack("<h", val)
+        with wave.open(path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(bytes(frames))
+    except Exception as e:
+        logger.warning(f"beep wav failed: {e}")
+    return path
+
+
+def _play_beep(freq: int = 880, ms: int = 120):
+    """Проиграть сигнал через PulseAudio (WSL) — best-effort."""
+    try:
+        path = _beep_wav(freq, ms)
+        if not os.path.exists(path):
+            return
+        for cmd in (["aplay", "-D", "pulse", "-q", path],
+                    ["paplay", path],
+                    ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path]):
+            if shutil.which(cmd[0]):
+                try:
+                    subprocess.run(cmd, timeout=5, check=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def _to_wav(path: str):
     """Конвертация в 16 кГц моно WAV через ffmpeg. Возвращает (путь, временный?)."""
     if _is_wav(path) or not shutil.which("ffmpeg"):
@@ -696,6 +761,17 @@ def health():
     })
 
 
+@app.route("/beep", methods=["GET", "POST"])
+def beep_route():
+    """Проиграть звуковой сигнал из WSL (тот же путь, что у /voice)."""
+    try:
+        freq = int(request.args.get("freq", "880"))
+    except (TypeError, ValueError):
+        freq = 880
+    threading.Thread(target=_play_beep, args=(freq,), daemon=True).start()
+    return jsonify({"status": "ok", "freq": freq})
+
+
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     if "audio" not in request.files:
@@ -770,4 +846,5 @@ if __name__ == "__main__":
         f"(detect segments={LANG_DETECT_SEGMENTS}, threshold={LANG_DETECT_THRESHOLD})"
     )
     logger.info(f"STT: model={MODEL_SIZE} beam={BEAM_SIZE} vad={VAD_FILTER}")
+    _purge_old_files()
     app.run(host=args.host, port=args.port, threaded=True)

@@ -170,36 +170,11 @@ function findToolbar(input) {
 
 // --- Гибридная запись: микрофон браузера, при неудаче — сервер WSL ---
 
-// Звуковая индикация (как в /voice): 880 Гц — старт, 520 Гц — конец записи,
-// 660 Гц — распознавание завершено. Best-effort через Web Audio.
-let audioCtx = null;
-function beep(freq = 880, ms = 120) {
+// Звуковая индикация (как в /voice): сигнал проигрывает STT-сервер в WSL
+// (880 Гц — старт, 520 Гц — конец записи, 660 Гц — распознавание завершено).
+function beep(freq = 880) {
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = audioCtx;
-    if (ctx.state === 'suspended') ctx.resume();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    const now = ctx.currentTime;
-    const dur = ms / 1000;
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
-    gain.gain.linearRampToValueAtTime(0, now + dur);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + dur + 0.02);
-  } catch {}
-}
-
-// AudioContext надо создать/возобновить прямо в обработчике клика: иначе
-// политика автовоспроизведения браузера глушит сигналы (клик — единственный жест).
-function primeAudio() {
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    fetch(`${STT_SERVER}/beep?freq=${freq}`, { method: 'GET' }).catch(() => {});
   } catch {}
 }
 
@@ -318,7 +293,6 @@ function syncButton() {
 
 // Стабильный обработчик: клик либо начинает, либо останавливает
 function onVoiceClick(btn) {
-  primeAudio();
   if (uiPhase === 'recording') {
     if (stopSignal) stopSignal();
     return;
