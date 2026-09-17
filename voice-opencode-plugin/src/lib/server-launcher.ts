@@ -5,15 +5,17 @@
  *   OPENCODE_VOICE_SERVER           1|0    авто-запуск (по умолчанию 1)
  *   OPENCODE_VOICE_SERVER_SCRIPT    путь к stt_server.py (если нестандартный)
  *   OPENCODE_VOICE_PORT             порт сервера (по умолчанию 8765)
+ *   OPENCODE_VOICE_SERVER_LOG       файл лога сервера (по умолчанию /tmp/opencode/stt_server.log)
  *   OPENCODE_VOICE_SERVER_WATCHDOG_MS  период проверки живости, 0 = выкл (по умолчанию 120000)
  */
 
 import { spawn } from "node:child_process"
-import { existsSync } from "node:fs"
+import { closeSync, existsSync, openSync } from "node:fs"
 import { join } from "node:path"
 
 const DEFAULT_PORT = 8765
 const DEFAULT_WATCHDOG_MS = 120_000
+const DEFAULT_LOG = "/tmp/opencode/stt_server.log"
 
 type LogFn = (message: string, extra?: Record<string, unknown>) => void | Promise<void>
 
@@ -75,11 +77,30 @@ export async function ensureSttServer(directory: string, log?: LogFn): Promise<b
     if (!env.PULSE_SERVER && existsSync("/mnt/wslg/PulseServer")) {
       env.PULSE_SERVER = "unix:/mnt/wslg/PulseServer"
     }
-    const args = [script, "--port", String(serverPort())]
+    const args = ["-u", script, "--port", String(serverPort())]
     if (process.env.WHISPER_MODEL) args.push("--model", process.env.WHISPER_MODEL)
-    const child = spawn("python3", args, { detached: true, stdio: "ignore", env })
+    // Лог сервера в файл (иначе /dev/null и диагностика распознавания слепая).
+    const logPath = process.env.OPENCODE_VOICE_SERVER_LOG || DEFAULT_LOG
+    let logFd: number | undefined
+    try {
+      logFd = openSync(logPath, "a")
+    } catch {
+      logFd = undefined
+    }
+    const child = spawn("python3", args, {
+      detached: true,
+      stdio: logFd !== undefined ? ["ignore", logFd, logFd] : "ignore",
+      env,
+    })
     child.unref()
-    await log?.("stt server starting", { script, port: serverPort(), pid: child.pid })
+    if (logFd !== undefined) {
+      try {
+        closeSync(logFd)
+      } catch {
+        // fd уже продублирован ребёнком
+      }
+    }
+    await log?.("stt server starting", { script, port: serverPort(), pid: child.pid, log: logPath })
     const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 1500))
