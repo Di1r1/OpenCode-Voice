@@ -20,6 +20,7 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 ## Development & Testing
 
 - **Env required**: `OPENCODE_VOICE_BACKEND` (`local`/`api`), `OPENAI_API_KEY` (if `api`), `OPENCODE_VOICE_LANGUAGE` (default `ru`). See `src/lib/config.ts`.
+- **Server security**: `stt_server.py` binds `127.0.0.1` by default (`OPENCODE_VOICE_HOST` overrides) and answers CORS only for local origins; no auth. `faster_whisper` is imported lazily, so the server runs in whisper.cpp/GPU mode without it.
 
 - **Plugin loader quirk**: `src/index.ts` uses dynamic `import()` for config/STT/recorder (line 22). Do NOT add top-level non-function exports; `getLegacyPlugins` throws.
 - **Hook trick**: `command.execute.before` suppresses the markdown command template by setting `output.parts.length = 0` and pushing `{type:"text",text:""}` (line 64-65). Without this, `UnknownError` occurs from an empty array; without the push, the prompt is invalid.

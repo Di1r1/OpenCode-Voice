@@ -22,7 +22,6 @@ import time
 import logging
 from pathlib import Path
 from flask import Flask, request, jsonify
-from faster_whisper import WhisperModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,10 +30,22 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 
+# CORS: разрешаем только локальные origin (OpenCode UI, расширение), а не "*".
+# Иначе любая веб-страница в браузере могла бы дёргать локальный сервер.
+_ALLOWED_ORIGIN = re.compile(
+    r"^(https?://(127\.0\.0\.1|localhost|10\.\d+\.\d+\.\d+|"
+    r"172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?"
+    r"|chrome-extension://[a-p]{32})$",
+    re.IGNORECASE,
+)
+
+
 @app.after_request
 def _cors(resp):
-    # Разрешаем запросы из OpenCode Web UI (другой порт = другой origin)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
+    origin = request.headers.get("Origin", "")
+    if origin and _ALLOWED_ORIGIN.match(origin):
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp
@@ -137,6 +148,14 @@ def load_model(size, device, compute_type):
     MODEL_SIZE = size
     DEVICE = device
     COMPUTE_TYPE = compute_type
+    # Ленивый импорт: в GPU-режиме (whisper.cpp) faster-whisper не обязателен.
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as e:
+        raise RuntimeError(
+            "faster-whisper не установлен (pip install faster-whisper). "
+            "Для GPU-режима он не нужен — используется whisper.cpp."
+        ) from e
     logger.info(f"Loading faster-whisper model: {MODEL_SIZE} on {DEVICE} ({COMPUTE_TYPE})")
     model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
     logger.info("Model loaded successfully")
@@ -332,7 +351,12 @@ def transcribe_file(path: str) -> dict:
                 "whisper.cpp недоступен (%s) — откат на faster-whisper (CPU)",
                 str(e)[:200],
             )
-            _ensure_faster_whisper()
+            try:
+                _ensure_faster_whisper()
+            except Exception as fe:
+                # faster-whisper не установлен — не скрываем исходную ошибку GPU.
+                logger.error("faster-whisper недоступен для отката: %s", fe)
+                raise e
             return _transcribe_faster_whisper(path)
     return _transcribe_faster_whisper(path)
 
@@ -819,7 +843,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="OpenCode Voice STT Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
+    parser.add_argument("--host", default=os.getenv("OPENCODE_VOICE_HOST", "127.0.0.1"),
+                        help="Host to bind (default 127.0.0.1; use 0.0.0.0 to expose on the network)")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
     parser.add_argument("--model", default="medium", help="Whisper model size (tiny, base, small, medium, large)")
     parser.add_argument("--device", default="cpu", help="Device (cpu, cuda)")
