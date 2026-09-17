@@ -45,12 +45,12 @@ cd voice-opencode-plugin/stt-server
 pip install --no-input faster-whisper flask requests
 
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
-python3 stt_server.py --model small --port 8765
+python3 stt_server.py --model medium --port 8765
 ```
 
 Плагин сам запускает этот сервер при загрузке OpenCode (если он ещё не запущен) и следит за его живостью — ручной запуск необязателен.
 
-Модели: `tiny` / `base` / `small` (по умолчанию) / `medium`. Проверка: `curl -s localhost:8765/health`.
+Модели: `tiny` / `base` / `small` / `medium` (по умолчанию) / `large`. Проверка: `curl -s localhost:8765/health`.
 
 Без микрофона можно проверить весь пайплайн на готовом WAV:
 
@@ -88,10 +88,10 @@ cmake --build build -j4 --target whisper-cli
 DEST=$HOME/.local/share/opencode-voice/whisper
 mkdir -p $DEST/bin
 cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
-cp models/ggml-small.bin $DEST/
+cp models/ggml-medium.bin $DEST/
 ```
 
-Сервер сам обнаружит CLI и переключится на него (`curl -s localhost:8765/health` покажет `"backend":"whispercpp"`). Команда `/voice` в плагине использует тот же CLI, если он есть (иначе faster-whisper на CPU). Принудительно вернуть CPU: `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
+Сервер сам обнаружит CLI и переключится на него (`curl -s localhost:8765/health` покажет `"backend":"whispercpp"`, `"device":"cuda"`). Команда `/voice` в плагине использует тот же CLI, когда доступна CUDA. Если видеокарты нет (нет `libcuda`) — и плагин, и сервер автоматически откатываются на `faster-whisper` (CPU). Выбрать устройство явно: `/voice device cpu|gpu|auto` или `OPENCODE_VOICE_DEVICE=cpu` (аналогично `OPENCODE_VOICE_STT_BACKEND=faster-whisper`).
 
 ### 3. Плагин OpenCode
 
@@ -129,6 +129,7 @@ opencode web --hostname 0.0.0.0
 | `/voice <file.wav>` | Распознать локальный аудиофайл (без микрофона) |
 | `/voice backend [local\|api]` | Показать/сменить STT-бэкенд |
 | `/voice lang [ru\|en\|auto]` | Показать/сменить язык |
+| `/voice device [auto\|gpu\|cpu]` | Показать/сменить устройство: GPU (whisper.cpp) или CPU (faster-whisper) |
 
 TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) запускает push-to-talk.
 
@@ -138,8 +139,9 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 |------------|-----------|--------------|
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
 | `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/пусто (авто) | `ru` |
+| `OPENCODE_VOICE_DEVICE` | устройство: `auto` (GPU, иначе CPU) \| `gpu` \| `cpu` | `auto` |
 | `OPENAI_API_KEY` | ключ для бэкенда `api` | — |
-| `WHISPER_MODEL` | модель для локального бэкенда плагина | `small` |
+| `WHISPER_MODEL` | модель локального бэкенда плагина (faster-whisper) | `medium` |
 | `WHISPER_BEAM_SIZE` | beam size декодера (`1` = greedy, быстрее всего) | `1` |
 | `WHISPER_VAD` | VAD-фильтр (`1`/`0`) | `1` |
 | `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |
@@ -147,7 +149,8 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
 | `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); пусто = авто | авто |
 | `WHISPER_CPP_BIN` | путь к CLI whisper.cpp | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
-| `WHISPER_CPP_MODEL` | путь к ggml-модели whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-small.bin` |
+| `WHISPER_CPP_MODEL` | путь к ggml-модели whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
+| `WHISPER_CPP_MODEL_FALLBACK` | CPU ggml-модель, если faster-whisper не установлен | `…/ggml-small.bin` |
 | `OPENCODE_VOICE_MAX_SECONDS` | максимум записи на сервере | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | авто-пересоздание аудиоканала WSLg при молчащем источнике | `1` |

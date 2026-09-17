@@ -13,16 +13,19 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  *   /voice <file.wav> — распознать готовый аудиофайл и вставить текст в prompt
  *   /voice backend    — показать текущий бэкенд распознавания
  *   /voice backend <local|api> — переключить бэкенд
- *   /voice lang <ru|en> — установить язык распознавания
+ *   /voice lang <ru|en|auto> — установить язык распознавания
+ *   /voice device <auto|gpu|cpu> — GPU (whisper.cpp) или CPU (faster-whisper)
  *
  * Текст подставляется в поле ввода opencode через client.tui.appendPrompt,
  * как будто его напечатали вручную.
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
-  const { config, STT_LANGUAGES, DEFAULTS } = await import("./lib/config")
+  const { config, STT_LANGUAGES, STT_DEVICES, DEFAULTS } = await import("./lib/config")
+  const fs = await import("node:fs")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
+    device: (config.sttDevice || DEFAULTS.sttDevice) as string,
   }
 
   const log = async (message: string, extra?: Record<string, unknown>) => {
@@ -38,22 +41,23 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
   void ensureSttServer(directory, log)
   startServerWatchdog(directory, log)
 
+  // Статус записи для TUI-плагина: он читает этот файл и рисует живой таймер
+  // (обновления prompt/тостов из этого хука TUI не отображает, пока хук выполняется).
+  const STATUS_FILE = "/tmp/opencode/voice-status.json"
+  const setStatus = (state: "recording" | "transcribing" | "idle", start = 0) => {
+    try {
+      fs.writeFileSync(STATUS_FILE, JSON.stringify({ state, start, max: 30 }))
+    } catch {
+      // индикатор best-effort
+    }
+  }
+
   const append = (text: string) => {
     if (!text) return
     try {
       client.tui.appendPrompt({ body: { text } })
     } catch {
       // appendPrompt is best-effort
-    }
-  }
-
-  // Живой индикатор в поле ввода (таймер записи). Best-effort.
-  const setPromptText = (text: string) => {
-    try {
-      client.tui.clearPrompt()
-      if (text) client.tui.appendPrompt({ body: { text } })
-    } catch {
-      // prompt indicator is best-effort
     }
   }
 
@@ -116,6 +120,22 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
+      // /voice device [auto|gpu|cpu] — выбор CPU/GPU для локального распознавания
+      if (sub === "device" || sub === "dev") {
+        const want = parts[1]?.toLowerCase()
+        if (!want) {
+          showToast(`Текущее устройство: ${state.device} (auto: GPU, иначе CPU)`)
+          return
+        }
+        if (!(STT_DEVICES as readonly string[]).includes(want)) {
+          showToast(`Доступные устройства: ${STT_DEVICES.join(", ")}`, "error")
+          return
+        }
+        state.device = want
+        showToast(`Устройство установлено: ${state.device}${want === "cpu" ? " (faster-whisper)" : ""}`)
+        return
+      }
+
       // /voice <file.wav> — распознать готовый аудиофайл
       if (parts.length && (parts[0].endsWith(".wav") || parts[0].endsWith(".mp3") || parts[0].endsWith(".m4a") || parts[0].endsWith(".ogg") || parts[0].endsWith(".flac"))) {
         const file = parts[0]
@@ -126,6 +146,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           const raw = await transcribe({
             backend: state.backend,
             language: state.language,
+            device: state.device,
             file: resolved,
             $,
           })
@@ -150,19 +171,13 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
         const { beep } = await import("./lib/beep")
         const recordOnce = async () => {
-          setPromptText("🎙 Запись 0/30 с")
           await beep($, 880, 120)
           const s = await rec.startPushToTalk($, { maxSeconds: 30 })
-          const t0 = Date.now()
-          const tick = setInterval(() => {
-            const sec = Math.floor((Date.now() - t0) / 1000)
-            if (sec <= 30) setPromptText(`🎙 Запись ${sec}/30 с`)
-          }, 1000)
+          setStatus("recording", Date.now())
           try {
             await rec.waitPushToTalkEnd(s, 35000)
           } finally {
-            clearInterval(tick)
-            setPromptText("")
+            setStatus("transcribing")
           }
           await beep($, 520, 140)
           return s
@@ -187,6 +202,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           raw = await transcribe({
             backend: state.backend,
             language: state.language,
+            device: state.device,
             file: session.file,
             $,
           })
@@ -207,6 +223,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       } catch (e: any) {
         await log("ptt aborted", { error: e?.message || String(e) })
         throw e
+      } finally {
+        setStatus("idle")
       }
     },
   }

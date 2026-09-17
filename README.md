@@ -45,12 +45,12 @@ cd voice-opencode-plugin/stt-server
 pip install --no-input faster-whisper flask requests
 
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
-python3 stt_server.py --model small --port 8765
+python3 stt_server.py --model medium --port 8765
 ```
 
 The plugin auto-starts this server when OpenCode loads (if it is not already running) and keeps it alive with a watchdog — manual start is optional.
 
-Models: `tiny` / `base` / `small` (default) / `medium`. Check: `curl -s localhost:8765/health`.
+Models: `tiny` / `base` / `small` / `medium` (default) / `large`. Check: `curl -s localhost:8765/health`.
 
 Without a microphone you can exercise the whole pipeline on a prepared WAV:
 
@@ -88,10 +88,10 @@ cmake --build build -j4 --target whisper-cli
 DEST=$HOME/.local/share/opencode-voice/whisper
 mkdir -p $DEST/bin
 cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
-cp models/ggml-small.bin $DEST/
+cp models/ggml-medium.bin $DEST/
 ```
 
-The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` shows `"backend":"whispercpp"`). The `/voice` command in the plugin uses the same CLI when it is present (otherwise faster-whisper on CPU). Force the CPU path with `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
+The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` shows `"backend":"whispercpp"`, `"device":"cuda"`). The `/voice` command in the plugin uses the same CLI when CUDA is available. If there is no GPU (no `libcuda`), it automatically falls back to `faster-whisper` on CPU — the server does the same. Force a device explicitly with `/voice device cpu|gpu|auto` or `OPENCODE_VOICE_DEVICE=cpu` (`OPENCODE_VOICE_STT_BACKEND=faster-whisper` also works).
 
 ### 3. OpenCode plugin
 
@@ -129,6 +129,7 @@ Install `voice-button.user.js` in Tampermonkey (or similar) — it adds the 🎤
 | `/voice <file.wav>` | Transcribe a local audio file (no microphone needed) |
 | `/voice backend [local\|api]` | Show/switch the STT backend |
 | `/voice lang [ru\|en\|auto]` | Show/switch the language |
+| `/voice device [auto\|gpu\|cpu]` | Show/switch local device: GPU (whisper.cpp) or CPU (faster-whisper) |
 
 TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk.
 
@@ -138,8 +139,9 @@ TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-tal
 |----------|---------|---------|
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
 | `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/empty (auto) | `ru` |
+| `OPENCODE_VOICE_DEVICE` | local device: `auto` (GPU, else CPU) \| `gpu` \| `cpu` | `auto` |
 | `OPENAI_API_KEY` | key for the `api` backend | — |
-| `WHISPER_MODEL` | model for the plugin's local backend | `small` |
+| `WHISPER_MODEL` | model for the plugin's local (faster-whisper) backend | `medium` |
 | `WHISPER_BEAM_SIZE` | decoder beam size (`1` = greedy, fastest) | `1` |
 | `WHISPER_VAD` | voice-activity filter (`1`/`0`) | `1` |
 | `WHISPER_INITIAL_PROMPT` | context hint for Whisper | empty (off) |
@@ -147,7 +149,8 @@ TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-tal
 | `WHISPER_LANG_DETECT_THRESHOLD` | language confidence threshold | `0.6` |
 | `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); empty = auto | auto |
 | `WHISPER_CPP_BIN` | whisper.cpp CLI path | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
-| `WHISPER_CPP_MODEL` | whisper.cpp ggml model path | `~/.local/share/opencode-voice/whisper/ggml-small.bin` |
+| `WHISPER_CPP_MODEL` | whisper.cpp ggml model path | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
+| `WHISPER_CPP_MODEL_FALLBACK` | CPU ggml model used when faster-whisper is absent | `…/ggml-small.bin` |
 | `OPENCODE_VOICE_MAX_SECONDS` | max server-side recording length | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | path to a WAV for microphone-free testing | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | auto-recreate the WSLg audio channel on a silent source | `1` |

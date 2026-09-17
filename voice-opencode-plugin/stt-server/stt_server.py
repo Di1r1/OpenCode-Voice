@@ -46,9 +46,14 @@ if not os.getenv("PULSE_SERVER") and os.path.exists("/mnt/wslg/PulseServer"):
 
 # Model will be loaded in main()
 model = None
-MODEL_SIZE = "small"
+MODEL_SIZE = "medium"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
+
+# Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
+FT_MODEL = "medium"
+FT_DEVICE = "cpu"
+FT_COMPUTE = "int8"
 
 # Подсказка для пунктуации/контекста (bias для Whisper). По умолчанию пусто:
 # жёсткий русский prompt ухудшал распознавание отдельных слов (проверка → прайберка).
@@ -76,7 +81,7 @@ WHISPER_CPP_BIN = os.getenv(
 )
 WHISPER_CPP_MODEL = os.getenv(
     "WHISPER_CPP_MODEL",
-    os.path.expanduser("~/.local/share/opencode-voice/whisper/ggml-small.bin"),
+    os.path.expanduser("~/.local/share/opencode-voice/whisper/ggml-medium.bin"),
 )
 WHISPER_CPP_LIB_DIR = os.getenv(
     "WHISPER_CPP_LIB_DIR",
@@ -218,8 +223,35 @@ def _transcribe_whispercpp(path: str) -> dict:
 
 def transcribe_file(path: str) -> dict:
     if STT_BACKEND == "whispercpp":
-        return _transcribe_whispercpp(path)
+        try:
+            return _transcribe_whispercpp(path)
+        except Exception as e:
+            # GPU недоступна / CLI не запустился — автоматический откат на CPU.
+            logger.warning(
+                "whisper.cpp недоступен (%s) — откат на faster-whisper (CPU)",
+                str(e)[:200],
+            )
+            _ensure_faster_whisper()
+            return _transcribe_faster_whisper(path)
     return _transcribe_faster_whisper(path)
+
+
+def _cuda_available() -> bool:
+    """Есть ли CUDA-драйвер (WSL2 или системный)."""
+    return any(os.path.exists(p) for p in (
+        "/usr/lib/wsl/lib/libcuda.so.1",
+        "/usr/lib/wsl/lib/libcuda.so",
+        "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+        "/usr/local/cuda/lib64/libcuda.so.1",
+    ))
+
+
+def _ensure_faster_whisper():
+    """Ленивая загрузка CPU-модели (используется при откате с whisper.cpp)."""
+    global model
+    if model is None:
+        load_model(FT_MODEL, FT_DEVICE, FT_COMPUTE)
+    return model
 
 
 def _transcribe_faster_whisper(path: str) -> dict:
@@ -617,7 +649,7 @@ def health():
         "status": "ok",
         "backend": STT_BACKEND,
         "model": MODEL_SIZE,
-        "device": DEVICE,
+        "device": "cuda" if (STT_BACKEND == "whispercpp" and _cuda_available()) else DEVICE,
         "recorder": _record_probe_cmd(),
         "pulse_server": os.getenv("PULSE_SERVER", ""),
         "fake_audio": FAKE_AUDIO or None,
@@ -657,7 +689,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OpenCode Voice STT Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
-    parser.add_argument("--model", default="small", help="Whisper model size (tiny, base, small, medium, large)")
+    parser.add_argument("--model", default="medium", help="Whisper model size (tiny, base, small, medium, large)")
     parser.add_argument("--device", default="cpu", help="Device (cpu, cuda)")
     parser.add_argument("--compute-type", default="int8", help="Compute type (int8, float16, float32)")
     args = parser.parse_args()
@@ -671,9 +703,21 @@ if __name__ == "__main__":
 
     if not STT_BACKEND:
         STT_BACKEND = "whispercpp" if whispercpp_available() else "faster-whisper"
+
+    # OPENCODE_VOICE_DEVICE=cpu — принудительно CPU (faster-whisper).
+    if os.getenv("OPENCODE_VOICE_DEVICE", "").lower() == "cpu":
+        STT_BACKEND = "faster-whisper"
+
+    # CPU-параметры для ленивого отката whisper.cpp → faster-whisper.
+    FT_MODEL = args.model
+    FT_DEVICE = args.device
+    FT_COMPUTE = args.compute_type
+
     if STT_BACKEND == "whispercpp":
         MODEL_SIZE = os.path.basename(WHISPER_CPP_MODEL)
-        logger.info(f"STT backend: whisper.cpp (GPU), model={WHISPER_CPP_MODEL}")
+        cuda = "CUDA" if _cuda_available() else "CPU"
+        logger.info(f"STT backend: whisper.cpp ({cuda}), model={WHISPER_CPP_MODEL}")
+        logger.info(f"CPU fallback: faster-whisper {FT_MODEL} ({FT_DEVICE}/{FT_COMPUTE})")
     else:
         load_model(args.model, args.device, args.compute_type)
         logger.info(f"STT backend: faster-whisper ({args.device}/{args.compute_type})")

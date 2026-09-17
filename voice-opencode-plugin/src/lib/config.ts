@@ -3,7 +3,8 @@
  *
  * Переменные окружения:
  *   OPENCODE_VOICE_BACKEND   local | api     (по умолчанию local)
- *   OPENCODE_VOICE_LANGUAGE  ru | en       (по умолчанию ru)
+ *   OPENCODE_VOICE_LANGUAGE  ru | en | auto (по умолчанию ru)
+ *   OPENCODE_VOICE_DEVICE    auto | gpu | cpu (по умолчанию auto: GPU, иначе CPU)
  *   OPENAI_API_KEY           ключ для облачного Whisper
  *   OPENCODE_VOICE_MODEL     модель Whisper (по умолчанию whisper-1)
  *   OPENCODE_VOICE_PTT_KEY   горячая клавиша для push-to-talk
@@ -11,10 +12,12 @@
 
 export const STT_BACKENDS = ["local", "api"] as const
 export const STT_LANGUAGES = ["ru", "en", "auto"] as const
+export const STT_DEVICES = ["auto", "gpu", "cpu"] as const
 
 export const DEFAULTS = {
   sttBackend: "local" as const,
   sttLanguage: "ru" as const,
+  sttDevice: "auto" as const,
   whisperModel: "whisper-1",
   sampleRate: 16000,
   channels: 1,
@@ -25,6 +28,7 @@ export const DEFAULTS = {
 export const config = {
   sttBackend: (process.env.OPENCODE_VOICE_BACKEND || DEFAULTS.sttBackend) as "local" | "api",
   sttLanguage: (process.env.OPENCODE_VOICE_LANGUAGE || DEFAULTS.sttLanguage) as string,
+  sttDevice: (process.env.OPENCODE_VOICE_DEVICE || DEFAULTS.sttDevice) as string,
   whisperModel: process.env.OPENCODE_VOICE_MODEL || DEFAULTS.whisperModel,
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   sampleRate: Number(process.env.OPENCODE_VOICE_SAMPLE_RATE) || DEFAULTS.sampleRate,

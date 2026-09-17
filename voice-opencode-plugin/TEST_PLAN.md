@@ -6,8 +6,8 @@
 ```bash
 python3 -c "
 from faster_whisper import WhisperModel
-model = WhisperModel('base', device='cpu', compute_type='int8')
-print('Модель base загружена')
+model = WhisperModel('medium', device='cpu', compute_type='int8')
+print('Модель medium загружена')
 "
 ```
 
@@ -90,6 +90,19 @@ ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test.fla
 /voice lang ru          # вернуться на ru
 ```
 
+## 5.1. Переключение устройства (GPU/CPU)
+
+```bash
+/voice device           # показать текущее (auto)
+/voice device cpu       # CPU: faster-whisper
+/voice device gpu       # GPU: whisper.cpp + CUDA
+/voice device auto      # авто: GPU, иначе CPU
+```
+
+**Ожидается:** toast с новым устройством; при `cpu` в `/tmp/opencode/voice-stt.log` пишется `faster-whisper`, при `gpu` — `whispercpp`.
+Без GPU (нет `libcuda`) `auto` и `gpu` не должны падать — срабатывает откат на CPU
+(`OPENCODE_VOICE_DEVICE=cpu` принудительно включает CPU).
+
 ---
 
 ## 6. Тест с реальным голосом (через микрофон в WSL)
@@ -98,7 +111,7 @@ ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test.fla
 - Запуск в WSL2 без контейнера песочницы (`/mnt/c/temp/openvi/...`)
 - `ffmpeg` доступен в PATH
 - `python3` + `faster-whisper` установлен (`pip install faster-whisper` уже выполнено)
-- Модель `base` загружена (`faster-whisper` скачивает автоматически при первом запуске)
+- Модель `medium` загружена (`faster-whisper` скачивает автоматически при первом запуске)
 
 ### Шаги:
 1. `export OPENCODE_VOICE_BACKEND=local`

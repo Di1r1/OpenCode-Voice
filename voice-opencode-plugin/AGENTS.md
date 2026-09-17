@@ -6,15 +6,16 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 
 - **Plugin Entrypoint**: `src/index.ts` (also linked to `.opencode/plugins/index.ts` for local loading via `opencode.json`).
 - **Configuration & Env**: `src/lib/config.ts` (`OPENCODE_VOICE_BACKEND`, `OPENAI_API_KEY`, `OPENCODE_VOICE_LANGUAGE`, etc.). Mic auto-recovery on empty recordings: `OPENCODE_VOICE_AUTO_RECOVER` (default `1`), `WSL_EXE`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`/`_PULSE` (see `recoverMic` in `src/lib/recorder.ts`).
-- **STT Transcription**: `src/lib/stt.ts` (`openai` SDK for `api` backend; `faster-whisper` model required for `local`; CLI fallbacks `whisper.cpp`/`vosk`).
+- **STT Transcription**: `src/lib/stt.ts` (`openai` SDK for `api` backend; `faster-whisper`/whisper.cpp for `local`). Default model: `medium` (`ggml-medium.bin` for whisper.cpp, `faster-whisper` medium on CPU). Device selection via `OPENCODE_VOICE_DEVICE` (`auto`|`gpu`|`cpu`) or `/voice device`: `auto` uses whisper.cpp+CUDA when `libcuda` is present, otherwise falls back to `faster-whisper` on CPU. `OPENCODE_VOICE_STT_BACKEND=whispercpp|faster-whisper` is kept as an alias.
 - **Audio Recording**: `src/lib/recorder.ts` (`startPushToTalk`/`waitPushToTalkEnd`/`stopPushToTalk`/`pttFileSize`; arecord/ffmpeg, mono 16 kHz S16_LE). `/voice` records a fixed 30 s window: start the recorder, wait for it to finish, then transcribe.
 
 ## Commands (`/voice`)
 
-- `/voice` - Records 30 seconds from the mic, transcribes it, and inserts the text into the prompt (the recognized text is also set as the command output so no empty request is sent). While recording, a live timer is shown in the prompt via `clearPrompt`/`appendPrompt` (`setPromptText`) and short beeps play on start/stop (`beep()` in `src/lib/beep.ts`, aplay/paplay/ffplay). Service markers (`[музыка]`, `(смех)`, `♪`) are stripped (`stripNonSpeech` in `src/lib/stt.ts`, `_strip_non_speech` in `stt_server.py`).
+- `/voice` - Records 30 seconds from the mic, transcribes it, and inserts the text into the prompt (the recognized text is also set as the command output so no empty request is sent). Short beeps play on start/stop (`beep()` in `src/lib/beep.ts`, aplay/paplay/ffplay). While recording, the server plugin writes `/tmp/opencode/voice-status.json` and the TUI plugin (`.opencode/tui/voice.ts`) polls it and shows a live toast timer — prompt/toast updates from the server hook are not rendered while the hook is running. Service markers (`[музыка]`, `(смех)`, `♪`) are stripped (`stripNonSpeech` in `src/lib/stt.ts`, `_strip_non_speech` in `stt_server.py`).
 - `/voice <file.wav>` - Transcribe a local audio file.
 - `/voice backend [local|api]` - View/switch STT backend.
 - `/voice lang [ru|en|auto]` - View/change recognition language.
+- `/voice device [auto|gpu|cpu]` - View/change local device (GPU whisper.cpp / CPU faster-whisper).
 
 ## Development & Testing
 
