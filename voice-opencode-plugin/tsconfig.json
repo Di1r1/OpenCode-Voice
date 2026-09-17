@@ -8,7 +8,9 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
   },
-  "include": ["src/**/*.ts", ".opencode/plugins/**/*.ts", ".opencode/tui/**/*.ts"]
+  "include": ["src/**/*.ts", ".opencode/**/*.ts", ".opencode/**/*.tsx"]
 }

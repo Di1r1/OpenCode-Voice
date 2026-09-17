@@ -404,7 +404,7 @@ def _transcribe_faster_whisper(path: str) -> dict:
 def _record_cmd(out_path: str):
     """Pick a recording backend available in this environment."""
     if shutil.which("arecord"):
-        return ["arecord", "-D", "pulse", "-f", "cd",
+        return ["arecord", "-D", "pulse", "-f", "S16_LE",
                 "-r", str(SAMPLE_RATE), "-c", str(CHANNELS),
                 "-t", "wav", "-d", str(MAX_SECONDS), out_path]
     if shutil.which("ffmpeg"):

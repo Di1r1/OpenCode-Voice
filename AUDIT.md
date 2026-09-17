@@ -49,17 +49,19 @@
 - ✅ Удалены: `TranscribeResult`, `STT_BACKENDS`, неиспользуемые поля `config` (`sampleRate`/`channels`/`bitsPerSample`/`pttKey`/`pulseServer`) и мёртвые env (`OPENCODE_VOICE_PTT_KEY`, `_BITS_PER_SAMPLE`, `_SAMPLE_RATE`, `_CHANNELS`), `stopPushToTalk`. — коммит `ff4a1cc`
 - ✅ `TEST_PLAN.md` актуализирован (`/dev/shm`, фиксированные 30 с).
 - ✅ `voice-button.user.js` помечен DEPRECATED; README (EN/RU) раздел 5 предупреждает.
-- ⬜ `.opencode/web/voice.ts` (JSX) не входит в `tsconfig.include` — не типизируется. Решить: включить в сборку (с `jsx`-настройками) или удалить дубль.
-- ⬜ `sync-plugin.sh` + закоммиченный `.opencode/plugins/index.ts` — дубль `src/index.ts`. Перейти на загрузку `./src/index.ts` из `opencode.json`, синк удалить.
-- ⬜ `tui.json` переопределяет `theme`/`leader`/`attention.sound` — навязчиво для публичного плагина; сделать нейтральным.
-- ⬜ `note()` (`stt.ts`) и `runPythonFile` пишут в `/tmp` (диск) — перенести в RAM-каталог.
-- ⬜ Мелочь: в `_record_cmd` используется `-f cd` (44.1 кГц стерео) с переопределением `-r/-c` — привести к `S16_LE`, как в плагине.
+- ✅ `.opencode/web/voice.ts` переименован в **`.tsx`** (JSX требует `.tsx`) и включён в `tsc` (`jsx: preserve`, `jsxImportSource: @opentui/solid`); поправлены типы обработчиков. Файл **опционален** — в глобальном TUI-конфиге не подключён (см. README §4).
+- ✅ `sync-plugin.sh`: добавлен режим `--check` (для CI/локально); сам синк сохранён, т.к. глобальный конфиг OpenCode грузит именно `.opencode/plugins/index.ts` (проверено в `~/.config/opencode/opencode.json`). Проверка: `bash sync-plugin.sh --check` → OK.
+- ✅ `tui.json` приведён к нейтральному виду (убраны `theme`/`leader`/`attention`; остался список плагинов, путь web-плагина → `.tsx`).
+- ✅ `runPythonFile` (`stt.ts`) пишет временный `.py` в RAM-каталог с фолбэком в `os.tmpdir()`; `note()` оставлен в `/tmp/opencode` — это лог, не аудио.
+- ✅ `_record_cmd`: `-f cd` → `-f S16_LE`; проверено записью: `pcm_s16le, 16000 Hz, mono`.
 
 ---
 
-## Проверки (актуально на `ff4a1cc`)
-- `tsc --noEmit` — OK
+## Проверки (актуально на `ff4a1cc` + правки P2)
+- `tsc --noEmit` — OK (включая `.opencode/web/voice.tsx`)
 - `python3 -m py_compile stt_server.py` — OK
-- Bind/CORS/доступ из Windows — OK
+- `bash sync-plugin.sh --check` — OK
+- Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`; PowerShell → `200`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
-- Живой прогон: кнопка 🎤 + `/voice` + бипы — OK (пользователь)
+- Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог
+- Живой прогон из браузера (transcribe + beep) на новом bind/CORS — OK (лог `voice-requests.log`)

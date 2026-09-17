@@ -117,6 +117,8 @@ opencode web --hostname 0.0.0.0
 
 Расширение обращается к STT-серверу по `http(s)://<host>:8765` (порт `STT_PORT` в `extension/content.js`). В `extension/manifest.json` уже прописаны `localhost`/`127.0.0.1`; при смене хоста добавьте его в `host_permissions`.
 
+Опционально: кнопку 🎤 прямо в prompt OpenCode даёт `.opencode/web/voice.tsx` — добавьте её в список `plugin` своего TUI-конфига (`~/.config/opencode/tui.json`).
+
 ### 5. Userscript (устарело)
 
 ⚠️ `voice-button.user.js` — **deprecated**: оставлен только для совместимости и не обновляется. Используйте расширение Chrome: юзерскрипт работает со старым API, не умеет RAM-запись/бипы/настройки и использует тот же `id` кнопки, что и расширение (не включайте оба).
@@ -278,9 +280,9 @@ voice-opencode-plugin/
 ├── extension/               # Chrome-расширение (MV3)
 ├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg (починка микрофона)
-├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts
+├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts (--check для CI)
 ├── opencode.json            # подключение плагина + агенты
-├── tui.json                 # TUI/web плагины + хоткеи
+├── tui.json                 # TUI/web плагины (пример; глобально не загружается)
 ├── AGENTS.md                # заметки по архитектуре
 └── TEST_PLAN.md             # план тестирования
 ```

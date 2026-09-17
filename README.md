@@ -117,6 +117,8 @@ opencode web --hostname 0.0.0.0
 
 The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` already lists `localhost`/`127.0.0.1`; if your host differs, add it to `host_permissions`.
 
+Optional: an in-UI 🎤 button for the OpenCode prompt is provided by `.opencode/web/voice.tsx` — add it to the `plugin` list of your TUI config (`~/.config/opencode/tui.json`) to enable it.
+
 ### 5. Userscript (deprecated)
 
 ⚠️ `voice-button.user.js` is **deprecated** — it is kept for compatibility only and is not updated. Use the Chrome extension instead: the userscript talks to an older API, lacks RAM recording/beeps/settings, and uses the same button `id` as the extension (do not enable both).
@@ -278,9 +280,9 @@ voice-opencode-plugin/
 ├── extension/               # Chrome extension (MV3)
 ├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # recreate the WSLg audio channel (microphone fix)
-├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts
+├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts (--check for CI)
 ├── opencode.json            # plugin wiring + agents
-├── tui.json                 # TUI/web plugins + keybinds
+├── tui.json                 # TUI/web plugins (sample; not loaded globally)
 ├── AGENTS.md                # architecture notes
 └── TEST_PLAN.md             # test plan
 ```

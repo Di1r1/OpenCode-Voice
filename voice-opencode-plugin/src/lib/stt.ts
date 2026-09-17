@@ -329,14 +329,21 @@ print(" ".join(res).strip())
 /**
  * Запускает многострочный Python-код через временный файл.
  * `python3 -c <многострочный код>` ломается на кавычках/переносах,
- * поэтому пишем код в /tmp/*.py и передаём аудиофайл как argv[1].
+ * поэтому пишем код в файл (по умолчанию в RAM-каталог) и передаём аудиофайл как argv[1].
  */
 async function runPythonFile($: any, code: string, audioFile: string): Promise<string> {
   const fs = await import("node:fs/promises")
-  const os = await import("node:os")
-  const path = await import("node:path")
-  const script = path.join(os.tmpdir(), `voice-stt-${Date.now()}-${Math.random().toString(36).slice(2)}.py`)
-  await fs.writeFile(script, code, "utf8")
+  const name = `voice-stt-${Date.now()}-${Math.random().toString(36).slice(2)}.py`
+  const ramDir = process.env.OPENCODE_VOICE_TMP_DIR || "/dev/shm/opencode-voice"
+  let script = path.join(os.tmpdir(), name)
+  try {
+    await fs.mkdir(ramDir, { recursive: true })
+    const ramScript = path.join(ramDir, name)
+    await fs.writeFile(ramScript, code, "utf8")
+    script = ramScript
+  } catch {
+    await fs.writeFile(script, code, "utf8")
+  }
   try {
     const out = await $`python3 ${script} ${audioFile}`.text()
     return out

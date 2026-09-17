@@ -26,8 +26,8 @@ const plugin: TuiPluginModule = {
                 opacity: 0.7,
                 transition: "opacity 0.2s",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-              onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+              onMouseEnter={(e: any) => (e.currentTarget.style.opacity = "1")}
+              onMouseLeave={(e: any) => (e.currentTarget.style.opacity = "0.7")}
               onClick={handleClick}
               title="Voice: record and transcribe (Ctrl+x then v)"
             >
