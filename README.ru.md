@@ -29,7 +29,7 @@
 - **Chrome/Chromium** — для кнопки 🎤 в веб-интерфейсе (TUI работает и без неё).
 - Опционально: NVIDIA GPU с WSL-совместимым драйвером — для `whisper.cpp` + CUDA.
 
-> **Что генерируется, а что версионируется в `.opencode/`.** `sync-plugin.sh` создаёт только `voice-opencode-plugin/.opencode/plugins/index.ts` (копия `src/index.ts` с правкой импортов) — этот файл в `.gitignore`, поэтому запускайте синк после каждого клона и после правок `src/index.ts`. Остальное версионируется: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`. `.opencode/agents/` — опциональные локальные dev-агенты: в git и npm-пакет не входят.
+> **Что генерируется, а что версионируется в `.opencode/`.** `sync-plugin.sh` создаёт только `voice-opencode-plugin/.opencode/plugins/index.ts` (копия `src/index.ts` с правкой импортов) — этот файл в `.gitignore`, поэтому запускайте синк после каждого клона и после правок `src/index.ts`. Версионируются runtime-ассеты: `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`. `.opencode/agents/` и `.opencode/skills/` — опциональные локальные dev-материалы: в git и npm-пакет не входят.
 
 ## Установка
 
@@ -345,21 +345,6 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f S16_LE -r 16000 -c 1
 
 `/voice` пишет через RDP-канал `audin`, который может отдавать звук медленнее реального времени. Качество тогда зависит от захвата микрофона в RDP-клиенте. Помогает: клиент с корректным перенаправлением ввода, реальный микрофон (не «Стереомикшер»), отключённые AGC/шумоподавление, и предпочтительно кнопка 🎤 в браузере (она ловит звук на стороне Windows и загружает файл, минуя `audin`).
 
-## Навыки (гайды для агентов)
-
-В репозитории девять OpenCode-**навыков** (`ovi-*`) — короткие рабочие инструкции для агентов и контрибьюторов: продукт, плагин, сервер, расширение, модели, звук, безопасность, диагностика и цикл разработки/релиза. Лежат в `voice-opencode-plugin/.opencode/skills/<name>/SKILL.md` и **версионируются** (остальное `.opencode/` генерируется и игнорируется).
-
-Чтобы OpenCode их увидел, укажите путь в своём конфиге — либо положите навыки в `<project>/.opencode/skills` и запускайте OpenCode из корня проекта:
-
-```jsonc
-// ~/.config/opencode/opencode.json
-{
-  "skills": { "paths": ["/ABS/PATH/voice-opencode-plugin/.opencode/skills"] }
-}
-```
-
-Обнаружение происходит при старте — перезапустите OpenCode. Затем загрузите навык штатным инструментом `skill`, например `ovi-overview`. Как добавить/зарегистрировать новый навык — в [`voice-opencode-plugin/SKILLS_GUIDE.md`](voice-opencode-plugin/SKILLS_GUIDE.md).
-
 ## Структура
 
 ```
@@ -375,9 +360,7 @@ voice-opencode-plugin/
 ├── tui.json                 # проектная привязка TUI-плагина (пример)
 ├── pytest.ini               # герметичные тесты сервера
 ├── shared/                  # единый источник истины для TS+Python (stt-spec.json, strip-cases.json)
-├── AGENTS.md                # заметки по архитектуре для агентов/контрибьюторов
-├── SKILLS_GUIDE.md          # как подключены навыки: добавить/зарегистрировать/диагностировать
-└── .opencode/               # plugins/index.ts генерируется; skills/tui/web/commands/agents версионируются
+└── .opencode/               # plugins/index.ts генерируется; tui/web/commands версионируются
 ```
 
 В корне репозитория также `README.md`, `README.ru.md`, `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/ci.yml`.

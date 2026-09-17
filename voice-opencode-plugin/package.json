@@ -21,7 +21,6 @@
     "extension/popup.html",
     "extension/popup.js",
     "extension/icons",
-    ".opencode/skills",
     ".opencode/tui",
     ".opencode/web",
     ".opencode/commands",

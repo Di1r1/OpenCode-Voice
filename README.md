@@ -29,7 +29,7 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 - **Chrome/Chromium** — for the 🎤 button in the web UI (the TUI works without it).
 - Optional: an NVIDIA GPU with a WSL-capable driver, for `whisper.cpp` + CUDA.
 
-> **Generated vs versioned in `.opencode/`.** `sync-plugin.sh` generates `voice-opencode-plugin/.opencode/plugins/index.ts` (a copy of `src/index.ts` with rewritten imports) — that file is git-ignored, so run the sync step after every clone and after editing `src/index.ts`. Everything else is versioned: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`. `.opencode/agents/` is optional and local-only (personal dev agents) — it is neither committed nor published.
+> **Generated vs versioned in `.opencode/`.** `sync-plugin.sh` generates `voice-opencode-plugin/.opencode/plugins/index.ts` (a copy of `src/index.ts` with rewritten imports) — that file is git-ignored, so run the sync step after every clone and after editing `src/index.ts`. Versioned runtime assets: `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`. `.opencode/agents/` and `.opencode/skills/` are optional local dev material — neither committed nor published.
 
 ## Installation
 
@@ -345,21 +345,6 @@ A stuck server-side recording returns `409`. The extension recovers automaticall
 
 `/voice` records through the RDP `audin` channel, which can deliver audio slower than real time. Recognition quality then depends on the RDP client's microphone capture. What helps: use a client with proper audio-input redirection, select a real microphone (not "Stereo Mix"), disable AGC/noise suppression, and prefer the browser 🎤 button (it captures on the Windows side and uploads a file, bypassing `audin` entirely).
 
-## Skills (agent guides)
-
-The repo ships nine OpenCode **skills** (`ovi-*`) — concise operating guides for agents and contributors covering the product, plugin, server, extension, models, audio, security, debugging and the dev/release loop. They live in `voice-opencode-plugin/.opencode/skills/<name>/SKILL.md` and are **versioned** (the rest of `.opencode/` is generated and git-ignored).
-
-To let OpenCode discover them, point your config at the folder — or put the skills in `<project>/.opencode/skills` and start OpenCode from the project root:
-
-```jsonc
-// ~/.config/opencode/opencode.json
-{
-  "skills": { "paths": ["/ABS/PATH/voice-opencode-plugin/.opencode/skills"] }
-}
-```
-
-Skills are scanned at startup, so restart OpenCode. Then load one in a session with the built-in `skill` tool, e.g. `ovi-overview`. Adding/registering new skills is described in [`voice-opencode-plugin/SKILLS_GUIDE.md`](voice-opencode-plugin/SKILLS_GUIDE.md).
-
 ## Structure
 
 ```
@@ -375,9 +360,7 @@ voice-opencode-plugin/
 ├── tui.json                 # project-local TUI plugin wiring (sample)
 ├── pytest.ini               # hermetic server tests
 ├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json)
-├── AGENTS.md                # architecture notes for agents/contributors
-├── SKILLS_GUIDE.md          # how skills are wired: add/register/diagnose
-└── .opencode/               # plugins/index.ts is generated; skills/tui/web/commands/agents are versioned
+└── .opencode/               # plugins/index.ts is generated; tui/web/commands are versioned
 ```
 
 Repo root also contains `README.md`, `README.ru.md`, `CHANGELOG.md` (release history), `LICENSE`, and CI in `.github/workflows/ci.yml`.
