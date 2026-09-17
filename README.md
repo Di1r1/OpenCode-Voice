@@ -42,11 +42,13 @@ arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav   # should be ~500 K
 
 ```bash
 cd voice-opencode-plugin/stt-server
-pip install --no-input faster-whisper flask requests
+pip install --no-input -r requirements.txt      # flask + faster-whisper (CPU backend)
 
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 python3 stt_server.py --model medium --port 8765
 ```
+
+The server binds `127.0.0.1` by default and starts even without `faster-whisper` when using the GPU (whisper.cpp) backend — the CPU package is imported lazily.
 
 The plugin auto-starts this server when OpenCode loads (if it is not already running) and keeps it alive with a watchdog — manual start is optional.
 
@@ -58,7 +60,7 @@ Without a microphone you can exercise the whole pipeline on a prepared WAV:
 OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765
 ```
 
-Route tests: `python3 test_stt_server.py --port 8765`.
+Route tests: `python3 test_stt_server.py --port 8765` (manual, needs a running server). Hermetic unit tests: `cd voice-opencode-plugin && pip install -r stt-server/requirements-dev.txt && pytest`.
 
 ### Optional: GPU acceleration (NVIDIA + CUDA, WSL2)
 
@@ -276,18 +278,19 @@ Also make sure the app has microphone access in Windows (Settings → Privacy �
 voice-opencode-plugin/
 ├── src/                     # plugin code (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
 ├── .opencode/               # OpenCode config: agents, commands, plugins, skills, tui, web
-├── stt-server/              # Flask + faster-whisper: stt_server.py, test_stt_server.py
+├── stt-server/              # Flask server: stt_server.py, requirements*.txt, tests/, manual test script
 ├── extension/               # Chrome extension (MV3)
 ├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # recreate the WSLg audio channel (microphone fix)
 ├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts (--check for CI)
 ├── opencode.json            # plugin wiring + agents
 ├── tui.json                 # TUI/web plugins (sample; not loaded globally)
+├── pytest.ini               # hermetic server tests
 ├── AGENTS.md                # architecture notes
 └── TEST_PLAN.md             # test plan
 ```
 
-Repo root also contains `README.md`, `README.ru.md`, `AUDIT.md` (production-readiness audit) and `LICENSE`.
+Repo root also contains `README.md`, `README.ru.md`, `AUDIT.md` (production-readiness audit), `LICENSE`, and CI in `.github/workflows/ci.yml`.
 
 ## License
 

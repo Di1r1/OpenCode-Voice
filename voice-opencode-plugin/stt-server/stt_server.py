@@ -775,11 +775,13 @@ def record_stop():
 
 @app.route("/health", methods=["GET"])
 def health():
+    # Бэкенд может быть ещё не разрешён (если main() не выполнялся) — считаем его здесь.
+    backend = STT_BACKEND or ("whispercpp" if whispercpp_available() else "faster-whisper")
     return jsonify({
         "status": "ok",
-        "backend": STT_BACKEND,
+        "backend": backend,
         "model": MODEL_SIZE,
-        "device": "cuda" if (STT_BACKEND == "whispercpp" and _cuda_available()) else DEVICE,
+        "device": "cuda" if (backend == "whispercpp" and _cuda_available()) else DEVICE,
         "recorder": _record_probe_cmd(),
         "pulse_server": os.getenv("PULSE_SERVER", ""),
         "fake_audio": FAKE_AUDIO or None,

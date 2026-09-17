@@ -18,13 +18,14 @@
 - ✅ `from faster_whisper import WhisperModel` убран с верхнего уровня: сервер стартует в режиме whisper.cpp/GPU без пакета; `load_model()` даёт понятную ошибку; откат GPU→CPU не скрывает исходную ошибку. Проверено эмуляцией отсутствия пакета. — `stt_server.py`, коммит `a46b6b8`
 
 ### 3. Воспроизводимая установка
-- ⬜ `requirements.txt` (flask, faster-whisper, requests) с пинами версий; зафиксировать lock для npm (либо явно описаставить как dev-репозиторий).
+- ✅ `stt-server/requirements.txt` (flask + faster-whisper) и `requirements-dev.txt` (flask/pytest/requests для CI) — версии запинены. `package-lock.json` добавлен в git (нужен для `npm ci` в CI).
 - ⬜ Проверка минимальных версий Python/CUDA/драйвера при старте сервера (понятные сообщения).
 
 ### 4. CI и автотесты
-- ⬜ GitHub Actions: `tsc --noEmit`, `python3 -m py_compile`, `pytest`.
-- ⬜ `pytest` для сервера: `/health`, `/transcribe` (с `OPENCODE_VOICE_FAKE_AUDIO`), `/beep?freq=0`, граничные случаи `/record/stop` без start и двойной start. Сейчас есть только ручной `test_stt_server.py`, требующий запущенного сервера и микрофона.
-- ⬜ Тест `stripNonSpeech`/`_strip_non_speech` общим набором кейсов (TS и Python).
+- ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `sync-plugin.sh --check` → `py_compile` → `pytest`.
+- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, 11 шт.): `/health`, CORS (allow/deny), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`. Микрофон и модель не нужны.
+- ✅ Побочный фикс: `/health` теперь отдаёт эффективный `backend` и при запуске не через `main()`.
+- ⬜ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python).
 
 ### 5. Дублирование логики TS ↔ Python
 - ⬜ Выбор бэкенда, дефолты моделей и `stripNonSpeech` реализованы дважды (`src/lib/stt.ts` и `stt-server/stt_server.py`) и уже рассинхронизировались. Решение: один источник истины (плагин ходит в сервер, либо общий формат/генерация).
@@ -61,6 +62,7 @@
 - `tsc --noEmit` — OK (включая `.opencode/web/voice.tsx`)
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
+- `python3 -m pytest` (11 тестов, герметично) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`; PowerShell → `200`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог

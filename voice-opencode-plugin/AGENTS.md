@@ -27,7 +27,7 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 - **Dev Script**: `npm run dev` (`opencode --plugin .`). No build script; TypeScript runs via plugin loader.
 - **Sync check**: `bash sync-plugin.sh --check` (add `--check` in CI) verifies `.opencode/plugins/index.ts` matches `src/index.ts` — the global OpenCode config loads the synced copy, so both must stay in sync.
 - **TUI/web plugins**: `.opencode/tui/voice.ts` (keybind `<leader>v` → `/voice`) and `.opencode/web/voice.tsx` (optional 🎤 button in the prompt; not wired by default — add it to your TUI config's `plugin` list). JSX must live in `.tsx`.
-- **Testing**: No automated test suite. Verify via `opencode.json` plugin path + `/voice backend/lang` through the TUI/HTTP API. Push-to-talk requires a real `/dev/snd` device (untested in sandbox).
+- **Testing**: hermetic `pytest` (`stt-server/tests/`, no mic/model: `pip install -r stt-server/requirements-dev.txt && pytest`), `npm run typecheck`, `bash sync-plugin.sh --check`; CI in `.github/workflows/ci.yml`. Also the manual `stt-server/test_stt_server.py` (needs a running server) and live `/voice` checks through the TUI. Push-to-talk requires a real mic/PulseAudio.
 - **WSL2 / Microphone (verified)**: `/dev/snd` отсутствует в WSL2 по дизайну (`no soundcards found`). Рабочий путь — `PulseAudio` (`PULSE_SERVER=/mnt/wslg/PulseServer`). Для контейнера: `libasound2-plugins alsa-utils`, mount `/mnt/wslg/`, переменная `PULSE_SERVER`. USB-микрофон возможен (`usbipd-win`), но требует ядро с `snd-usb-audio`. Не проверять `/proc/asound/cards` — в WSL2 пуст. См. `.opencode/skills/voice-stt/SKILL.md`.
 - **Subagents**: `voice-builder`, `voice-stt` (configured in `opencode.json`).
 - **Skills**: `voice-debug`, `voice-stt`.

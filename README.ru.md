@@ -42,11 +42,13 @@ arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav   # файл дол�
 
 ```bash
 cd voice-opencode-plugin/stt-server
-pip install --no-input faster-whisper flask requests
+pip install --no-input -r requirements.txt      # flask + faster-whisper (CPU-бэкенд)
 
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 python3 stt_server.py --model medium --port 8765
 ```
+
+Сервер по умолчанию слушает `127.0.0.1` и стартует даже без `faster-whisper`, если используется GPU-бэкенд (whisper.cpp) — CPU-пакет импортируется лениво.
 
 Плагин сам запускает этот сервер при загрузке OpenCode (если он ещё не запущен) и следит за его живостью — ручной запуск необязателен.
 
@@ -58,7 +60,7 @@ python3 stt_server.py --model medium --port 8765
 OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765
 ```
 
-Тесты маршрутов: `python3 test_stt_server.py --port 8765`.
+Тесты маршрутов: `python3 test_stt_server.py --port 8765` (ручной, нужен запущенный сервер). Герметичные юнит-тесты: `cd voice-opencode-plugin && pip install -r stt-server/requirements-dev.txt && pytest`.
 
 ### Опционально: ускорение на GPU (NVIDIA + CUDA, WSL2)
 
@@ -276,18 +278,19 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -d 3 /tmp/t.wav &
 voice-opencode-plugin/
 ├── src/                     # код плагина (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
 ├── .opencode/               # конфиг OpenCode: agents, commands, plugins, skills, tui, web
-├── stt-server/              # Flask + faster-whisper: stt_server.py, test_stt_server.py
-├── extension/               # Chrome-расширение (MV3)
+├── stt-server/              # Flask-сервер: stt_server.py, requirements*.txt, tests/, ручной скрипт тестов
+├── extension/               # расширение Chrome (MV3)
 ├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg (починка микрофона)
 ├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts (--check для CI)
 ├── opencode.json            # подключение плагина + агенты
 ├── tui.json                 # TUI/web плагины (пример; глобально не загружается)
+├── pytest.ini               # герметичные тесты сервера
 ├── AGENTS.md                # заметки по архитектуре
 └── TEST_PLAN.md             # план тестирования
 ```
 
-В корне репозитория также: `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену) и `LICENSE`.
+В корне репозитория также: `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `LICENSE` и CI в `.github/workflows/ci.yml`.
 
 ## Лицензия
 
