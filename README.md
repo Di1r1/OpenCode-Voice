@@ -16,6 +16,7 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 | `voice-opencode-plugin/doctor.sh` | Diagnostics and repair for the button/extension path (server, CORS, stuck recording, microphone) |
 | `voice-opencode-plugin/fix-mic.sh` | Recreates the WSLg audio channel when the microphone dies (WSL2) |
 | `voice-opencode-plugin/sync-plugin.sh` | Generates the local plugin/TUI entry points that OpenCode loads |
+| `voice-opencode-plugin/setup.sh` | One-command install: checks deps, server packages, optional GPU build, entry points, config hints |
 
 ## Requirements
 
@@ -36,14 +37,27 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 git clone https://github.com/Di1r1/OpenCode-Voice.git
 cd OpenCode-Voice/voice-opencode-plugin
 
+# one command: checks, deps, plugin entry points, config hints, doctor
+./setup.sh                  # CPU: faster-whisper (model downloads on first run)
+./setup.sh --gpu            # optional: build whisper.cpp with CUDA + fetch a ggml model
+```
+
+`setup.sh` checks the environment, installs `stt-server/requirements.txt`, runs `sync-plugin.sh`, then prints the exact `~/.config/opencode/opencode.json` and `tui.json` lines to add (use `--write-config` to patch them with a backup; `--check` prints the plan and changes nothing).
+
+Manual equivalent:
+
+```bash
 # 1. server deps (CPU backend)
 pip install --no-input -r stt-server/requirements.txt
 
 # 2. plugin deps + local entry points
 npm install
 bash sync-plugin.sh
+```
 
-# 3. register the plugin in your OpenCode config (see step 3 below), then:
+Then register the plugin in your OpenCode config (step 3 below), and start it:
+
+```bash
 opencode web --hostname 0.0.0.0
 ```
 
@@ -336,6 +350,7 @@ voice-opencode-plugin/
 ├── extension/               # Chrome extension (MV3): content.js, popup, manifest
 ├── doctor.sh                # diagnostics/repair (/voice doctor)
 ├── fix-mic.sh               # recreate the WSLg audio channel
+├── setup.sh                 # one-command install (deps, optional GPU build, config hints)
 ├── sync-plugin.sh           # generate the local plugin/TUI entry points (--check for CI)
 ├── opencode.json            # project-local plugin wiring (for development)
 ├── tui.json                 # project-local TUI plugin wiring (sample)

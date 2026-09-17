@@ -18,6 +18,11 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   are still taken from the page. Extension `1.0.10`.
 
 ### Added
+- **One-command installer `setup.sh`**: checks dependencies, installs `stt-server/requirements.txt`
+  (CPU path via faster-whisper), runs `sync-plugin.sh`, prints the `opencode.json`/`tui.json` lines to
+  add (or patches them with `--write-config`, backup included) and runs `doctor.sh`. `--gpu` builds
+  whisper.cpp with CUDA (auto-detects the toolkit and compute capability) and downloads the
+  `ggml-*.bin` model into `$OPENCODE_VOICE_WHISPER_DIR`; `--check` prints the plan and changes nothing.
 - **Portable whisper/CUDA discovery** (`src/lib/whisper.ts`, mirrored in `stt_server.py`): no hardcoded
   toolkit version or paths. Base dir `OPENCODE_VOICE_HOME` (default `~/.local/share/opencode-voice`),
   CLI/model auto-detected in `OPENCODE_VOICE_WHISPER_DIR`, CUDA directories discovered via `cuda-*`

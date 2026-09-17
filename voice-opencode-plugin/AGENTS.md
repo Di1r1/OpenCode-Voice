@@ -38,6 +38,8 @@ Load the matching skill (tool `skill`) **before** working on an area. Skills liv
 
 ## Development & Testing
 
+- **Install**: `bash setup.sh` (CPU: pip deps + sync + config hints) or `bash setup.sh --gpu` (also builds whisper.cpp with CUDA and downloads a `ggml-*.bin` model into `$OPENCODE_VOICE_WHISPER_DIR`); `--check` prints the plan without changing anything; `--write-config` patches `~/.config/opencode/*.json` with a backup.
+
 - **Env required**: `OPENCODE_VOICE_BACKEND` (`local`/`api`), `OPENAI_API_KEY` (if `api`), `OPENCODE_VOICE_LANGUAGE` (default `ru`). See `src/lib/config.ts`.
 - **Server security**: `stt_server.py` binds `127.0.0.1` by default (`OPENCODE_VOICE_HOST` overrides) and answers CORS only for local origins; no auth. `faster_whisper` is imported lazily, so the server runs in whisper.cpp/GPU mode without it.
 

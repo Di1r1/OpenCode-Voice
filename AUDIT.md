@@ -20,6 +20,7 @@
 ### 3. Воспроизводимая установка
 - ✅ `stt-server/requirements.txt` (flask + faster-whisper) и `requirements-dev.txt` (flask/pytest/requests для CI) — версии запинены. `package-lock.json` добавлен в git (нужен для `npm ci` в CI).
 - ✅ Проверка версий/зависимостей при старте сервера (`_runtime_checks`, `_cuda_driver_version`): Python, наличие whisper.cpp CLI/модели, CUDA-драйвер и версия, рекордер (arecord/ffmpeg/sox), доступность `PULSE_SERVER`. Понятные `WARNING`. `/health` отдаёт `python` и `auth`. — `stt_server.py`
+- ✅ Установка одной командой `setup.sh`: проверки зависимостей, `pip install -r requirements.txt`, сборка whisper.cpp с CUDA и скачивание `ggml-*.bin` (`--gpu`), `sync-plugin.sh`, готовые строки для `opencode.json`/`tui.json` (`--write-config` с бэкапом), `doctor.sh` в конце; `--check` — только план. — `setup.sh`
 
 ### 4. CI и автотесты
 - ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `npm test` → `sync-plugin.sh --check` → `py_compile` → `pytest`.

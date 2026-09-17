@@ -16,6 +16,7 @@
 | `voice-opencode-plugin/doctor.sh` | Диагностика и ремонт пути «кнопка/расширение» (сервер, CORS, зависшая запись, микрофон) |
 | `voice-opencode-plugin/fix-mic.sh` | Пересоздаёт аудиоканал WSLg, если микрофон «умер» (WSL2) |
 | `voice-opencode-plugin/sync-plugin.sh` | Генерирует локальные entry-точки плагина/TUI, которые загружает OpenCode |
+| `voice-opencode-plugin/setup.sh` | Установка одной командой: проверки зависимостей, пакеты сервера, опциональная GPU-сборка, entry-точки, подсказки по конфигу |
 
 ## Требования
 
@@ -36,14 +37,27 @@
 git clone https://github.com/Di1r1/OpenCode-Voice.git
 cd OpenCode-Voice/voice-opencode-plugin
 
+# одна команда: проверки, зависимости, entry-точки, подсказки по конфигу, doctor
+./setup.sh                  # CPU: faster-whisper (модель скачается при первом запуске)
+./setup.sh --gpu            # опционально: собрать whisper.cpp с CUDA и скачать ggml-модель
+```
+
+`setup.sh` проверяет окружение, ставит `stt-server/requirements.txt`, запускает `sync-plugin.sh` и печатает готовые строки для `~/.config/opencode/opencode.json` и `tui.json` (с `--write-config` вписывает их с бэкапом; `--check` только показывает план и ничего не меняет).
+
+Вручную то же самое:
+
+```bash
 # 1. зависимости сервера (CPU-бэкенд)
 pip install --no-input -r stt-server/requirements.txt
 
 # 2. зависимости плагина + локальные entry-точки
 npm install
 bash sync-plugin.sh
+```
 
-# 3. прописать плагин в конфиг OpenCode (см. шаг 3), затем:
+Затем прописать плагин в конфиг OpenCode (шаг 3) и запустить:
+
+```bash
 opencode web --hostname 0.0.0.0
 ```
 
@@ -336,6 +350,7 @@ voice-opencode-plugin/
 ├── extension/               # расширение Chrome (MV3): content.js, popup, manifest
 ├── doctor.sh                # диагностика/ремонт (/voice doctor)
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg
+├── setup.sh                 # установка одной командой (зависимости, опциональная GPU-сборка, подсказки)
 ├── sync-plugin.sh           # генерация локальных entry-точек (--check для CI)
 ├── opencode.json            # проектная привязка плагина (для разработки)
 ├── tui.json                 # проектная привязка TUI-плагина (пример)
