@@ -68,6 +68,7 @@ def test_health(client):
     body = r.get_json()
     assert body["status"] == "ok"
     assert body["backend"]
+    assert body["version"] == srv.SERVER_VERSION
     assert "model" in body
     # Recorder depends on the host: arecord/ffmpeg/sox or None in a bare CI image.
     assert "recorder" in body

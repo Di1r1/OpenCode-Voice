@@ -137,7 +137,7 @@ bash voice-opencode-plugin/doctor.sh          # добавьте --fix для а
 # или из TUI:
 /voice doctor --fix
 
-# здоровье сервера
+# здоровье сервера (в ответе есть "version", "backend", "device", "auth")
 curl -s 127.0.0.1:8765/health
 
 # тесты (микрофон и модель не нужны)

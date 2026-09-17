@@ -41,8 +41,8 @@
 9. ⬜ **Адаптивный выбор модели**: сейчас дефолт `medium` и на CPU (медленно). Автоподбор (CPU→small, GPU→medium) или явная настройка.
 10. ⬜ **Сериализация транскрибации**: Flask `threaded=True` + общий объект модели faster-whisper → возможные конфликты при параллельных запросах. Lock/очередь.
 11. ✅ **Блокирующий хук / логи**: поведение `/voice` (хук блокируется на время записи; отказы логируются как ERROR, чтобы не уходил пустой запрос; авто-стоп по тишине) задокументировано в README EN/RU и AGENTS.md. — `README.md`, `README.ru.md`
-12. ⬜ **npm-пакет**: нет `files`, `exports`, `repository`, `engines`, `prepublishOnly`; имя `opencode-voice` занято — использовать скоуп (`@di1r1/opencode-voice`). — `package.json`
-13. ⬜ **Chrome Web Store**: нет иконок (`icons`), `content_scripts.matches` включает `<all_urls>` (широкое разрешение — реджект), возможно лишние `activeTab`/`scripting`, нет политики приватности. — `extension/manifest.json`
+12. 🚧 **npm-пакет**: добавлены `files`, `engines`, `repository`, `homepage`, `bugs`, `publishConfig`; имя переведено в скоуп `@di1r1/opencode-voice` (без скоупа имя занято), `package-lock` пересинхронизирован. Осталось: реальная публикация/версионирование. — `package.json`
+13. 🚧 **Chrome Web Store**: добавлены иконки 16/32/48/128 (`extension/icons/`, в `manifest.icons` и `action.default_icon`), версия расширения 1.0.8; версия сервера и расширения видны в popup и в консоли. Осталось: сузить `content_scripts.matches` (`<all_urls>` → реджект) и политика приватности. — `extension/manifest.json`
 
 ---
 

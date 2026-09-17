@@ -137,7 +137,7 @@ bash voice-opencode-plugin/doctor.sh          # add --fix to auto-repair
 # or from the TUI:
 /voice doctor --fix
 
-# server health
+# server health (includes "version", "backend", "device", "auth")
 curl -s 127.0.0.1:8765/health
 
 # tests (no microphone/model needed)

@@ -123,7 +123,7 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f S16_LE -r 16000 -c 1
 
 ## Логи
 
-- Content script: `F12` → Console → фильтр `[OpenCode Voice]` (там же версия, 1.0.7).
+- Content script: `F12` → Console → фильтр `[OpenCode Voice]` (там же версия расширения и версия сервера, 1.0.8).
 - Сервер: `/tmp/opencode/stt_server.log` (старт и каждое распознавание).
 - Запросы кнопки: `/tmp/opencode/voice-requests.log`.
 - Распознанный текст: `/tmp/opencode/voice-recognized.log` (с `source=button`).

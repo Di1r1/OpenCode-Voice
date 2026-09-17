@@ -93,6 +93,7 @@ model = None
 MODEL_SIZE = "medium"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
+SERVER_VERSION = "0.2.0"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
 FT_MODEL = "medium"
@@ -880,6 +881,7 @@ def health():
     backend = STT_BACKEND or ("whispercpp" if whispercpp_available() else "faster-whisper")
     return jsonify({
         "status": "ok",
+        "version": SERVER_VERSION,
         "backend": backend,
         "model": MODEL_SIZE,
         "device": "cuda" if (backend == "whispercpp" and _cuda_available()) else DEVICE,

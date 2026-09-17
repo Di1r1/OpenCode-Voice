@@ -12,6 +12,9 @@
 export const STT_LANGUAGES = ["ru", "en", "auto"] as const
 export const STT_DEVICES = ["auto", "gpu", "cpu"] as const
 
+/** Версия плагина (держим в одном месте: /voice help, логи). */
+export const PLUGIN_VERSION = "0.2.0"
+
 export const DEFAULTS = {
   sttBackend: "local" as const,
   sttLanguage: "ru" as const,

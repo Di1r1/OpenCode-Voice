@@ -463,7 +463,11 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.7 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.8 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
+    fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
+      .then((r) => r.json())
+      .then((h) => console.log(`[OpenCode Voice] server v${h.version || '?'} · ${h.backend || '?'}/${h.device || '?'} · auth=${h.auth}`))
+      .catch(() => {});
   } catch {}
 });

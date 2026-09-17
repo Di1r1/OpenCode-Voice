@@ -41,8 +41,15 @@ async function checkServer() {
   try {
     const res = await fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() });
     if (res.ok) {
-      statusEl.textContent = '✅ STT сервер работает';
+      let info = {};
+      try { info = await res.json(); } catch {}
+      statusEl.textContent = `✅ STT сервер v${info.version || '?'} · ${info.backend || '?'}`;
       statusEl.className = 'status ok';
+      const vEl = document.getElementById('versions');
+      if (vEl) {
+        const extV = chrome.runtime.getManifest().version;
+        vEl.textContent = `Расширение v${extV} · сервер v${info.version || '?'} (${info.backend || '?'}/${info.device || '?'})`;
+      }
       testBtn.disabled = false;
     } else {
       throw new Error(`HTTP ${res.status}`);

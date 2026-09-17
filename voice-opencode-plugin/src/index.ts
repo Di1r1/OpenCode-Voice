@@ -20,7 +20,7 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  * как будто его напечатали вручную.
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
-  const { config, STT_LANGUAGES, STT_DEVICES, DEFAULTS } = await import("./lib/config")
+  const { config, STT_LANGUAGES, STT_DEVICES, DEFAULTS, PLUGIN_VERSION } = await import("./lib/config")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
@@ -178,8 +178,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       // /voice help — список возможностей
       if (sub === "help" || sub === "-h" || sub === "--help") {
         const helpText =
-          "Voice:\n" +
-          "• /voice — запись 30 с → текст в поле ввода\n" +
+          `Voice v${PLUGIN_VERSION}:\n` +
+          "• /voice — запись → текст в поле ввода (авто-стоп по тишине)\n" +
           "• /voice backend [local|api]\n" +
           "• /voice lang [ru|en|auto]\n" +
           "• /voice device [auto|gpu|cpu]\n" +
