@@ -229,6 +229,8 @@ The server and the `/voice` command auto-detect the CLI (`/health` then shows `"
 | `/voice doctor [--fix]` | Diagnose the button/extension path and optionally auto-repair |
 | `/voice help` | List all subcommands |
 
+The `backend`/`lang`/`device` choices are persisted to `~/.config/opencode-voice/state.json`, so they survive a restart (env vars still take precedence).
+
 TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk. Web UI: the 🎤 button from the extension.
 
 Known limitations of the TUI command (by OpenCode design): the hook blocks while recording (so there is no live on-screen timer), and a failed attempt is logged as an ERROR in the OpenCode log (the plugin throws to avoid sending an empty prompt).
@@ -242,6 +244,7 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
 | `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto` | `ru` |
 | `OPENCODE_VOICE_DEVICE` | `auto` (GPU, else CPU) \| `gpu` \| `cpu` | `auto` |
+| `OPENCODE_VOICE_STATE_FILE` | Where `/voice backend\|lang\|device` choices are persisted | `~/.config/opencode-voice/state.json` |
 | `OPENAI_API_KEY` | key for the `api` backend | — |
 | `OPENCODE_VOICE_MODEL` | model name for the `api` backend | `whisper-1` |
 | `WHISPER_MODEL` | model size for the local backend; default depends on the device (medium on GPU, small on CPU) | auto (device) |

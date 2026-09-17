@@ -229,6 +229,8 @@ cp models/ggml-medium.bin $DEST/
 | `/voice doctor [--fix]` | Диагностика пути «кнопка/расширение» и авто-ремонт |
 | `/voice help` | Список всех подкоманд |
 
+Выбор `backend`/`lang`/`device` сохраняется в `~/.config/opencode-voice/state.json` и переживает перезапуск (переменные окружения по-прежнему в приоритете).
+
 TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запускает push-to-talk. Веб-интерфейс: кнопка 🎤 из расширения.
 
 Известные ограничения команды в TUI (особенность OpenCode): хук блокируется на время записи (живого таймера на экране нет), а неудачная попытка пишется как ERROR в лог OpenCode (плагин специально бросает исключение, чтобы не уходил пустой запрос).
@@ -242,6 +244,7 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
 | `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto` | `ru` |
 | `OPENCODE_VOICE_DEVICE` | `auto` (GPU, иначе CPU) \| `gpu` \| `cpu` | `auto` |
+| `OPENCODE_VOICE_STATE_FILE` | Где сохраняются выборы `/voice backend\|lang\|device` | `~/.config/opencode-voice/state.json` |
 | `OPENAI_API_KEY` | ключ для бэкенда `api` | — |
 | `OPENCODE_VOICE_MODEL` | имя модели для `api` | `whisper-1` |
 | `WHISPER_MODEL` | размер модели локального бэкенда; по умолчанию зависит от устройства (medium на GPU, small на CPU) | авто (устройство) |

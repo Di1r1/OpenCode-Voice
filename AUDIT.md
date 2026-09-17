@@ -39,7 +39,7 @@
 ## P1 — важно
 
 6. ✅ **Пустой запрос модели**: info-подкоманды `backend/lang/device/help` и сбой `/voice <file>` кладут в `parts` служебный текст (`svc(...)`) вместо `"\n"`; успех PTT/файла — распознанный текст; сбои PTT бросают исключение (без запроса). — `src/index.ts`
-7. ⬜ **Персист состояния**: `state.backend/language/device` живёт в памяти, общий на все сессии, сбрасывается при рестарте. Писать в `~/.config/opencode-voice/config.json` (или читать из `opencode.json`). — `src/index.ts`, `src/lib/config.ts`
+7. ✅ **Персист состояния**: `state.backend/language/device` сохраняется в `~/.config/opencode-voice/state.json` (`OPENCODE_VOICE_STATE_FILE`) через `src/lib/state.ts`; `/voice backend|lang|device` пишет файл атомарно (`.tmp` + rename), при старте приоритет **env > файл > дефолты**, в тосте предупреждение, если env перекроет выбор при перезапуске. Тесты: 8 (node:test). — `src/lib/state.ts`, `src/index.ts`
 8. ✅ **Портируемость**: пути вынесены в `src/lib/whisper.ts` и зеркально в `stt_server.py`: база `OPENCODE_VOICE_HOME` (`~/.local/share/opencode-voice`), CLI/модель ищутся в `OPENCODE_VOICE_WHISPER_DIR` (`<home>/whisper`), CUDA-каталоги — glob `cuda-*` + `CUDA_HOME`/`CUDA_PATH` (версия toolkit не зашита). Тесты: TS (`test/whisper.test.mjs`) + Python (`test_server.py`).
 9. ✅ **Адаптивный выбор модели**: `WHISPER_MODEL`/`WHISPER_CPP_MODEL_SIZE` переопределяют, иначе `medium` на GPU и `small` на CPU; на CPU whisper.cpp берёт `small`, если он есть. — `src/lib/{stt,whisper}.ts`, `stt_server.py`
 10. ⬜ **Сериализация транскрибации**: Flask `threaded=True` + общий объект модели faster-whisper → возможные конфликты при параллельных запросах. Lock/очередь.
@@ -72,7 +72,7 @@
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
 - `python3 -m pytest` (**44 теста**, герметично) — OK
-- `npm test` (**33 теста**: 14 кейсов `stripNonSpeech` из `shared/strip-cases.json` + целостность `shared/stt-spec.json` + 9 путей/моделей whisper.cpp + E2E: пайплайн плагина (рекордер→WAV→whisper-CLI→текст, стаб-бинари) и реальный сервер по HTTP со стаб-whisper-cli) — OK
+- `npm test` (**41 тест**: 14 кейсов `stripNonSpeech` из `shared/strip-cases.json` + целостность `shared/stt-spec.json` + 9 путей/моделей whisper.cpp + 8 персиста настроек `src/lib/state.ts` + E2E: пайплайн плагина (рекордер→WAV→whisper-CLI→текст, стаб-бинари) и реальный сервер по HTTP со стаб-whisper-cli) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог

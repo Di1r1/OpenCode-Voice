@@ -21,11 +21,17 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  * как будто его напечатали вручную.
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
-  const { config, STT_LANGUAGES, STT_DEVICES, DEFAULTS, PLUGIN_VERSION } = await import("./lib/config")
-  const state = {
-    backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
-    language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
-    device: (config.sttDevice || DEFAULTS.sttDevice) as string,
+  const { STT_LANGUAGES, STT_DEVICES, DEFAULTS, PLUGIN_VERSION } = await import("./lib/config")
+  // Настройки переживают перезапуск: env > ~/.config/opencode-voice/state.json > дефолты.
+  const { resolveState, saveState, envOverride } = await import("./lib/state")
+  const state = resolveState({
+    backend: DEFAULTS.sttBackend,
+    language: DEFAULTS.sttLanguage,
+    device: DEFAULTS.sttDevice,
+  }) as {
+    backend: "local" | "api"
+    language: string
+    device: string
   }
 
   const log = async (message: string, extra?: Record<string, unknown>) => {
@@ -100,8 +106,13 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           return
         }
         state.backend = want as "local" | "api"
-        showToast(`Бэкенд переключён на: ${state.backend}`)
-        setParts(svc(`Бэкенд переключён на: ${state.backend}`))
+        const noteB = !saveState({ backend: state.backend })
+          ? " (не сохранилось)"
+          : envOverride("backend")
+            ? " — env OPENCODE_VOICE_BACKEND перекроет при перезапуске"
+            : " (сохранено)"
+        showToast(`Бэкенд: ${state.backend}${noteB}`)
+        setParts(svc(`Бэкенд переключён на: ${state.backend}${noteB}`))
         return
       }
 
@@ -119,8 +130,13 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           return
         }
         state.language = want
-        showToast(`Язык установлен: ${state.language}`)
-        setParts(svc(`Язык установлен: ${state.language}`))
+        const noteL = !saveState({ language: state.language })
+          ? " (не сохранилось)"
+          : envOverride("language")
+            ? " — env OPENCODE_VOICE_LANGUAGE перекроет при перезапуске"
+            : " (сохранено)"
+        showToast(`Язык установлен: ${state.language}${noteL}`)
+        setParts(svc(`Язык установлен: ${state.language}${noteL}`))
         return
       }
 
@@ -138,8 +154,13 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           return
         }
         state.device = want
-        showToast(`Устройство установлено: ${state.device}${want === "cpu" ? " (faster-whisper)" : ""}`)
-        setParts(svc(`Устройство установлено: ${state.device}`))
+        const noteD = !saveState({ device: state.device })
+          ? " (не сохранилось)"
+          : envOverride("device")
+            ? " — env OPENCODE_VOICE_DEVICE перекроет при перезапуске"
+            : " (сохранено)"
+        showToast(`Устройство: ${state.device}${want === "cpu" ? " (faster-whisper)" : ""}${noteD}`)
+        setParts(svc(`Устройство установлено: ${state.device}${noteD}`))
         return
       }
 

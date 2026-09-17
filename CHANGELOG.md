@@ -37,6 +37,9 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   silence thresholds, whisper.cpp extra flags, per-device model sizes) and `shared/strip-cases.json`
   (parity cases). Both `npm test` and `pytest` read them, so the two implementations can no longer
   drift; Python gained the previously missing `stripNonSpeech` tests.
+- **Persisted settings:** `/voice backend|lang|device` are written to `~/.config/opencode-voice/state.json`
+  (`OPENCODE_VOICE_STATE_FILE`) by `src/lib/state.ts` and survive restarts. Precedence at startup is
+  env > file > defaults, and the toast warns when an env variable will override the saved choice.
 - **Hermetic E2E tests** (Node `node:test`, wired into CI): `test/e2e-plugin.test.mjs` drives the real
   recorder/STT code (start → silence auto-stop → graceful SIGINT → finalized WAV → stub whisper-cli →
   recognized-text log) with a fake Bun-`$` shim and stub binaries, and `test/e2e-server.test.mjs`
