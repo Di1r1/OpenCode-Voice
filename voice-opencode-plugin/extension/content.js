@@ -352,6 +352,43 @@ function onVoiceClick(btn) {
   runRecordingFlow(btn);
 }
 
+// Push-to-talk hotkey: hold Alt+Z (page-level; only where the 🎤 button exists).
+const HOTKEY_CODE = 'KeyZ';
+let hotkeyActive = false;
+
+function hotkeyButton() {
+  return document.querySelector('#opencode-voice-btn');
+}
+
+function hotkeyStop() {
+  if (!hotkeyActive) return;
+  hotkeyActive = false;
+  const btn = hotkeyButton();
+  if (btn && uiPhase === 'recording' && stopSignal) onVoiceClick(btn);
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat || !e.altKey || e.code !== HOTKEY_CODE) return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const btn = hotkeyButton();
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (hotkeyActive || uiPhase !== 'idle') return;
+  hotkeyActive = true;
+  log('Hotkey: start (hold Alt+Z)');
+  onVoiceClick(btn);
+}, true);
+
+window.addEventListener('keyup', (e) => {
+  if (e.code !== HOTKEY_CODE) return;
+  log('Hotkey: released');
+  hotkeyStop();
+}, true);
+
+// Released while the window lost focus -> stop gracefully.
+window.addEventListener('blur', hotkeyStop);
+
 async function runRecordingFlow(btn) {
   uiPhase = 'recording';
   applyButtonState(btn);
@@ -483,7 +520,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.11 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.12 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())
