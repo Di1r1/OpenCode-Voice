@@ -9,11 +9,10 @@ Voice input for [OpenCode](https://opencode.ai): speak, and your words land in t
 | Part | What it does |
 |------|--------------|
 | `src/` | OpenCode plugin (TS): the `/voice` command, push-to-talk recording, STT backends |
-| `.opencode/` | OpenCode config (agents, skills, the `/voice` command, TUI/web plugins) |
 | `stt-server/` | Flask + faster-whisper: server-side recording via PulseAudio (WSL) and transcription |
 | `extension/` | Chrome extension (MV3): the 🎤 button in the web UI, hybrid recording (browser → server) |
 | `voice-button.user.js` | Extension alternative — a Tampermonkey userscript |
-| `sync-plugin.sh` | Syncs `src/index.ts` → `.opencode/plugins/index.ts` |
+| `sync-plugin.sh` | Prepares the local OpenCode plugin and TUI/web entry points |
 
 ## Requirements
 
@@ -100,11 +99,11 @@ The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` sho
 ```bash
 cd voice-opencode-plugin
 npm install
-bash sync-plugin.sh     # generates .opencode/plugins/index.ts (gitignored) — required before start
+bash sync-plugin.sh     # prepare the plugin entry point — required before start
 npm run typecheck
 ```
 
-`opencode.json` already loads the plugin (`./.opencode/plugins/index.ts`); `tui.json` wires up the TUI/web parts. The whole `.opencode/` directory is gitignored and generated locally (skills, agents, commands live there too), so run `sync-plugin.sh` after cloning. Start it:
+`opencode.json` already wires up the plugin and `tui.json` the TUI/web parts; run the sync step above after cloning so those local entry points exist. Start it:
 
 ```bash
 export OPENCODE_VOICE_BACKEND=local OPENCODE_VOICE_LANGUAGE=ru PULSE_SERVER=unix:/mnt/wslg/PulseServer
@@ -119,7 +118,7 @@ opencode web --hostname 0.0.0.0
 
 The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` already lists `localhost`/`127.0.0.1`; if your host differs, add it to `host_permissions`.
 
-Optional: an in-UI 🎤 button for the OpenCode prompt is provided by `.opencode/web/voice.tsx` — add it to the `plugin` list of your TUI config (`~/.config/opencode/tui.json`) to enable it.
+Optional: an in-UI 🎤 button for the OpenCode prompt is provided by the bundled TUI/web plugin — add it to the `plugin` list of your TUI config (`~/.config/opencode/tui.json`) to enable it.
 
 ### 5. Userscript (deprecated)
 
@@ -284,12 +283,11 @@ Also make sure the app has microphone access in Windows (Settings → Privacy �
 ```
 voice-opencode-plugin/
 ├── src/                     # plugin code (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
-├── .opencode/               # OpenCode config: agents, commands, plugins, skills, tui, web
 ├── stt-server/              # Flask server: stt_server.py, requirements*.txt, tests/, manual test script
 ├── extension/               # Chrome extension (MV3)
 ├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # recreate the WSLg audio channel (microphone fix)
-├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts (--check for CI)
+├── sync-plugin.sh           # prepares the local plugin/TUI entry points (--check for CI)
 ├── opencode.json            # plugin wiring + agents
 ├── tui.json                 # TUI/web plugins (sample; not loaded globally)
 ├── pytest.ini               # hermetic server tests

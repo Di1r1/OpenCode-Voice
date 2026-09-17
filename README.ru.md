@@ -9,11 +9,10 @@
 | Часть | Что делает |
 |-------|------------|
 | `src/` | Плагин OpenCode (TS): команда `/voice`, запись push-to-talk, STT-бэкенды |
-| `.opencode/` | Конфиг OpenCode (агенты, скиллы, команда `/voice`, TUI/web-плагины) |
 | `stt-server/` | Flask + faster-whisper: серверная запись через PulseAudio (WSL) и распознавание |
 | `extension/` | Расширение Chrome (MV3): кнопка 🎤 в web UI, гибридная запись (браузер → сервер) |
 | `voice-button.user.js` | Альтернатива расширению — userscript для Tampermonkey |
-| `sync-plugin.sh` | Синхронизация `src/index.ts` → `.opencode/plugins/index.ts` |
+| `sync-plugin.sh` | Готовит локальные точки входа плагина и TUI/web |
 
 ## Требования
 
@@ -100,11 +99,11 @@ cp models/ggml-medium.bin $DEST/
 ```bash
 cd voice-opencode-plugin
 npm install
-bash sync-plugin.sh     # создаёт .opencode/plugins/index.ts (в .gitignore) — нужно перед запуском
+bash sync-plugin.sh     # готовит точку входа плагина — нужно перед запуском
 npm run typecheck
 ```
 
-`opencode.json` уже подключает плагин (`./.opencode/plugins/index.ts`), `tui.json` — TUI/web-части. Каталог `.opencode/` целиком в `.gitignore` и создаётся локально (там же skills, agents, commands), поэтому после клонирования выполни `sync-plugin.sh`. Запуск:
+`opencode.json` уже подключает плагин, `tui.json` — TUI/web-части; после клонирования выполни шаг синхронизации выше, чтобы локальные точки входа появились. Запуск:
 
 ```bash
 export OPENCODE_VOICE_BACKEND=local OPENCODE_VOICE_LANGUAGE=ru PULSE_SERVER=unix:/mnt/wslg/PulseServer
@@ -119,7 +118,7 @@ opencode web --hostname 0.0.0.0
 
 Расширение обращается к STT-серверу по `http(s)://<host>:8765` (порт `STT_PORT` в `extension/content.js`). В `extension/manifest.json` уже прописаны `localhost`/`127.0.0.1`; при смене хоста добавьте его в `host_permissions`.
 
-Опционально: кнопку 🎤 прямо в prompt OpenCode даёт `.opencode/web/voice.tsx` — добавьте её в список `plugin` своего TUI-конфига (`~/.config/opencode/tui.json`).
+Опционально: кнопку 🎤 прямо в prompt OpenCode даёт встроенный TUI/web-плагин — добавьте её в список `plugin` своего TUI-конфига (`~/.config/opencode/tui.json`).
 
 ### 5. Userscript (устарело)
 
@@ -284,12 +283,11 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -d 3 /tmp/t.wav &
 ```
 voice-opencode-plugin/
 ├── src/                     # код плагина (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
-├── .opencode/               # конфиг OpenCode: agents, commands, plugins, skills, tui, web
 ├── stt-server/              # Flask-сервер: stt_server.py, requirements*.txt, tests/, ручной скрипт тестов
 ├── extension/               # расширение Chrome (MV3)
 ├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg (починка микрофона)
-├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts (--check для CI)
+├── sync-plugin.sh           # готовит локальные точки входа плагина/TUI (--check для CI)
 ├── opencode.json            # подключение плагина + агенты
 ├── tui.json                 # TUI/web плагины (пример; глобально не загружается)
 ├── pytest.ini               # герметичные тесты сервера
