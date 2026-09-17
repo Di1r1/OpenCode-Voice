@@ -276,7 +276,7 @@ voice-opencode-plugin/
 ├── .opencode/               # OpenCode config: agents, commands, plugins, skills, tui, web
 ├── stt-server/              # Flask + faster-whisper: stt_server.py, test_stt_server.py
 ├── extension/               # Chrome extension (MV3)
-├── voice-button.user.js     # userscript
+├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # recreate the WSLg audio channel (microphone fix)
 ├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts
 ├── opencode.json            # plugin wiring + agents
@@ -284,6 +284,8 @@ voice-opencode-plugin/
 ├── AGENTS.md                # architecture notes
 └── TEST_PLAN.md             # test plan
 ```
+
+Repo root also contains `README.md`, `README.ru.md`, `AUDIT.md` (production-readiness audit) and `LICENSE`.
 
 ## License
 

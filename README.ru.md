@@ -276,14 +276,16 @@ voice-opencode-plugin/
 ├── .opencode/               # конфиг OpenCode: agents, commands, plugins, skills, tui, web
 ├── stt-server/              # Flask + faster-whisper: stt_server.py, test_stt_server.py
 ├── extension/               # Chrome-расширение (MV3)
-├── voice-button.user.js     # userscript
-├── fix-mic.sh               # пересоздание аудиоканала WSLg (фикс микрофона)
+├── voice-button.user.js     # userscript (deprecated)
+├── fix-mic.sh               # пересоздание аудиоканала WSLg (починка микрофона)
 ├── sync-plugin.sh           # src/index.ts -> .opencode/plugins/index.ts
 ├── opencode.json            # подключение плагина + агенты
-├── tui.json                 # TUI/web-плагины + хоткеи
+├── tui.json                 # TUI/web плагины + хоткеи
 ├── AGENTS.md                # заметки по архитектуре
 └── TEST_PLAN.md             # план тестирования
 ```
+
+В корне репозитория также: `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену) и `LICENSE`.
 
 ## Лицензия
 
