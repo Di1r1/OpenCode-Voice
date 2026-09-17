@@ -1,6 +1,6 @@
 # План тестирования opencode-voice
 
-Актуально для текущей реализации: запись `/voice` — до тишины (~1.5 с после речи, жёсткий предел 60 с аудио), остановка рекордера мягкая (SIGINT), файлы в ОЗУ, `doctor.sh` для пути кнопки.
+Актуально для текущей реализации: запись `/voice` — до тишины (~1.5 с после речи, жёсткий предел `OPENCODE_VOICE_MAX_RECORD_SECONDS`, по умолчанию 300 с), остановка рекордера мягкая (SIGINT), файлы в ОЗУ, `doctor.sh` для пути кнопки.
 
 ## 0. Быстрые проверки (без микрофона и модели)
 
@@ -12,11 +12,11 @@ npm run typecheck                 # tsc --noEmit
 bash sync-plugin.sh --check       # entry-точки актуальны
 python3 -m py_compile stt-server/stt_server.py
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest                 # 37 герметичных тестов (сервер)
-npm test                          # 12 TS-тестов stripNonSpeech (node:test)
+python3 -m pytest                 # 44 герметичных теста (сервер)
+npm test                          # 33 Node-теста: stripNonSpeech, whisper-пути, E2E (плагин + сервер по HTTP)
 ```
 
-**Ожидается:** всё зелёное; pytest не требует микрофона и моделей (faster-whisper импортируется лениво), `npm test` — только Node 22+.
+**Ожидается:** всё зелёное; pytest не требует микрофона и моделей (faster-whisper импортируется лениво), `npm test` — только Node 22+. E2E-файл сервера сам пропускается, если нет Flask (Node-only CI), и запускается явно в server-job.
 
 ---
 

@@ -1234,12 +1234,14 @@ if __name__ == "__main__":
     parser.add_argument("--compute-type", default="int8", help="Compute type (int8, float16, float32)")
     args = parser.parse_args()
 
-    # Убрать зависшие рекордеры прошлых запусков (держат микрофон)
-    for pat in ("voice-ptt-", "arecord -D pulse", "ffmpeg -y -f alsa"):
-        try:
-            subprocess.run(["pkill", "-9", "-f", pat], check=False)
-        except Exception:
-            pass
+    # Убрать зависшие рекордеры прошлых запусков (держат микрофон).
+    # OPENCODE_VOICE_STALE_CLEANUP=0 — не трогать посторонние процессы (тесты, параллельный запуск).
+    if os.getenv("OPENCODE_VOICE_STALE_CLEANUP", "1").lower() not in ("0", "false", "no", "off"):
+        for pat in ("voice-ptt-", "arecord -D pulse", "ffmpeg -y -f alsa"):
+            try:
+                subprocess.run(["pkill", "-9", "-f", pat], check=False)
+            except Exception:
+                pass
 
     if not STT_BACKEND:
         STT_BACKEND = "whispercpp" if whispercpp_available() else "faster-whisper"

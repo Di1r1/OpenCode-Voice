@@ -110,13 +110,16 @@ export async function startPushToTalk($: any, opts: PttOptions = {}): Promise<Pt
   // Убираем зависшие записи прошлых запусков — они держат микрофон.
   try { await $`pkill -f voice-ptt-`.quiet() } catch {}
 
-  const arec = await which($, "arecord")
+  // Подмена рекордера (тесты/E2E): OPENCODE_VOICE_RECORDER_BIN=<любой исполняемый файл>
+  // получает те же аргументы, что arecord, и пишет WAV в последний аргумент.
+  const override = process.env.OPENCODE_VOICE_RECORDER_BIN
+  const arec = override || (await which($, "arecord"))
   let bin: string
   let args: string[]
   let backend: string
   if (arec) {
     bin = arec
-    backend = "arecord"
+    backend = override ? "custom" : "arecord"
     args = ["-D", "pulse", "-f", "S16_LE", "-r", String(sr), "-c", String(ch), "-t", "wav", "-d", String(max), file]
   } else {
     const ffmpeg = await which($, "ffmpeg")

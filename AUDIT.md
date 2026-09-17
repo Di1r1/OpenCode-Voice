@@ -69,7 +69,7 @@
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
 - `python3 -m pytest` (**44 теста**, герметично) — OK
-- `npm test` (**24 теста**: 14 кейсов `stripNonSpeech` из `shared/strip-cases.json` + целостность `shared/stt-spec.json` + 9 путей/моделей whisper.cpp) — OK
+- `npm test` (**33 теста**: 14 кейсов `stripNonSpeech` из `shared/strip-cases.json` + целостность `shared/stt-spec.json` + 9 путей/моделей whisper.cpp + E2E: пайплайн плагина (рекордер→WAV→whisper-CLI→текст, стаб-бинари) и реальный сервер по HTTP со стаб-whisper-cli) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог

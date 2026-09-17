@@ -146,7 +146,7 @@ curl -s 127.0.0.1:8765/health
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
 python3 -m pytest          # 37 server tests
-npm test                   # 12 tests (stripNonSpeech)
+npm test                   # 33 tests (stripNonSpeech, whisper paths, E2E: plugin pipeline + server over HTTP)
 npm run typecheck
 bash sync-plugin.sh --check
 ```
@@ -226,10 +226,12 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_TRANSCRIBE_TIMEOUT` | transcription timeout in seconds (`504` after it) | `300` |
 | `OPENCODE_VOICE_RATE_LIMIT` | requests per minute per IP/endpoint (`0` = off) | `60` |
 | `OPENCODE_VOICE_PURGE_INTERVAL` | how often the RAM dir is purged, s | `600` |
+| `OPENCODE_VOICE_STALE_CLEANUP` | on startup kill stray recorders (`voice-ptt-`, arecord, ffmpeg); `0` = leave other processes alone (tests/parallel runs) | `1` |
 | `OPENCODE_VOICE_KEEP_AUDIO` | if set, do not delete recordings (debug) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | recreate the WSLg audio channel on a silent source | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | recovery timing | `90`, `8000`, `5000` ms |
 | `OPENCODE_VOICE_MAX_RECORD_SECONDS` | Hard cap on `/voice` recording length (seconds); it normally stops earlier — ~1.5 s after you stop speaking | `300` |
+| `OPENCODE_VOICE_RECORDER_BIN` | replace the recorder binary (tests/E2E): gets the same args as `arecord` and writes the WAV to the last argument | — |
 
 ### STT server
 
@@ -355,7 +357,7 @@ npm install
 bash sync-plugin.sh            # after every change to src/index.ts
 npm run typecheck
 python3 -m pytest              # server tests (hermetic: no mic, no model)
-npm test                       # TS tests (stripNonSpeech, node:test)
+npm test                       # TS tests + hermetic E2E (node:test)
 bash sync-plugin.sh --check    # CI guard: entry points are up to date
 ```
 

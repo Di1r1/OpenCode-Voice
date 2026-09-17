@@ -146,7 +146,7 @@ curl -s 127.0.0.1:8765/health
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
 python3 -m pytest          # 37 тестов сервера
-npm test                   # 12 тестов (stripNonSpeech)
+npm test                   # 33 теста (stripNonSpeech, пути whisper, E2E: пайплайн плагина + сервер по HTTP)
 npm run typecheck
 bash sync-plugin.sh --check
 ```
@@ -226,10 +226,12 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_TRANSCRIBE_TIMEOUT` | таймаут распознавания, с (после — `504`) | `300` |
 | `OPENCODE_VOICE_RATE_LIMIT` | запросов в минуту на IP/эндпоинт (`0` — выключено) | `60` |
 | `OPENCODE_VOICE_PURGE_INTERVAL` | как часто чистить RAM-каталог, с | `600` |
+| `OPENCODE_VOICE_STALE_CLEANUP` | при старте убивать зависшие рекордеры (`voice-ptt-`, arecord, ffmpeg); `0` — не трогать посторонние процессы (тесты/параллельный запуск) | `1` |
 | `OPENCODE_VOICE_KEEP_AUDIO` | если задано — записи не удалять (отладка) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | пересоздавать аудиоканал WSLg при молчащем источнике | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | тайминги восстановления | `90`, `8000`, `5000` мс |
 | `OPENCODE_VOICE_MAX_RECORD_SECONDS` | Жёсткий предел длины записи `/voice` (с); обычно запись завершается раньше — через ~1.5 с после окончания речи | `300` |
+| `OPENCODE_VOICE_RECORDER_BIN` | подмена бинаря рекордера (тесты/E2E): получает те же аргументы, что `arecord`, и пишет WAV в последний аргумент | — |
 
 ### STT-сервер
 
@@ -355,7 +357,7 @@ npm install
 bash sync-plugin.sh            # после каждой правки src/index.ts
 npm run typecheck
 python3 -m pytest              # тесты сервера (герметично: без микрофона и модели)
-npm test                       # TS-тесты (stripNonSpeech, node:test)
+npm test                       # TS-тесты + герметичные E2E (node:test)
 bash sync-plugin.sh --check    # защита CI: entry-точки актуальны
 ```
 

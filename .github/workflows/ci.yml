@@ -40,9 +40,17 @@ jobs:
       - name: Install test dependencies
         run: pip install -r voice-opencode-plugin/stt-server/requirements-dev.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Byte-compile the server
         run: python -m py_compile voice-opencode-plugin/stt-server/stt_server.py
 
       - name: Run tests
         working-directory: voice-opencode-plugin
         run: python -m pytest
+
+      - name: E2E: real server over HTTP with a stub whisper-cli
+        working-directory: voice-opencode-plugin
+        run: node --experimental-strip-types --test test/e2e-server.test.mjs

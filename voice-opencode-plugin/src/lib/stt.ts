@@ -10,8 +10,8 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { config } from "./config"
-import { CPU_MODEL_SIZE, GPU_MODEL_SIZE, WHISPER_CPP_EXTRA_FLAGS, defaultModelSize, hasCuda, ldLibraryPath, whisperBin, whisperModelPath } from "./whisper"
+import { config } from "./config.ts"
+import { CPU_MODEL_SIZE, GPU_MODEL_SIZE, WHISPER_CPP_EXTRA_FLAGS, defaultModelSize, hasCuda, ldLibraryPath, whisperBin, whisperModelPath } from "./whisper.ts"
 
 // Диагностика: какой бэкенд реально использовался (`/tmp/opencode/voice-stt.log`).
 function note(backend: string, info: string): void {
@@ -108,7 +108,7 @@ export function logRecognized(source: string, text: string, language: string, fi
 }
 
 // Пост-обработка текста вынесена в ./text (тестируется напрямую).
-export { stripNonSpeech } from "./text"
+export { stripNonSpeech } from "./text.ts"
 
 /**
  * Есть ли CUDA-драйвер/рантайм. Проверяем по библиотеке (libcuda/libcudart), а
