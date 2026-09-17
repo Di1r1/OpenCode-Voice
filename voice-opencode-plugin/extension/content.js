@@ -427,3 +427,10 @@ observer.observe(document.body, { childList: true, subtree: true });
 addVoiceButton();
 
 log('Content script loaded, waiting for UI...');
+
+// Диагностика: подтверждаем, что загружена именно эта версия (видно в консоли
+// страницы и в логе STT-сервера как beep freq=0).
+try {
+  console.log('[OpenCode Voice] content.js v1.0.4 loaded');
+  fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET' }).catch(() => {});
+} catch {}

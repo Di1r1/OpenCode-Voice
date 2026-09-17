@@ -581,6 +581,7 @@ def _reap_if_done():
 
 @app.route("/record/start", methods=["POST"])
 def record_start():
+    _log_request("record/start")
     global _rec_proc, _rec_file, _rec_start, _last_recover
     with _rec_lock:
         _reap_if_done()
@@ -761,6 +762,17 @@ def health():
     })
 
 
+def _log_request(kind: str, extra: str = ""):
+    """Диагностика: кто и когда дергает сервер (авто-старт пишет в никуда)."""
+    try:
+        with open("/tmp/opencode/voice-requests.log", "a") as f:
+            ua = (request.headers.get("User-Agent") or "")[:40]
+            org = (request.headers.get("Origin") or "")[:40]
+            f.write(f"{time.strftime('%H:%M:%S')} {kind} {extra} origin={org} ua={ua}\n")
+    except Exception:
+        pass
+
+
 @app.route("/beep", methods=["GET", "POST"])
 def beep_route():
     """Проиграть звуковой сигнал из WSL (тот же путь, что у /voice)."""
@@ -768,12 +780,15 @@ def beep_route():
         freq = int(request.args.get("freq", "880"))
     except (TypeError, ValueError):
         freq = 880
-    threading.Thread(target=_play_beep, args=(freq,), daemon=True).start()
+    _log_request("beep", f"freq={freq}")
+    if freq > 0:
+        threading.Thread(target=_play_beep, args=(freq,), daemon=True).start()
     return jsonify({"status": "ok", "freq": freq})
 
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
+    _log_request("transcribe")
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
 
