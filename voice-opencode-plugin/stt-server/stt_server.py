@@ -44,6 +44,13 @@ def _cors(resp):
 if not os.getenv("PULSE_SERVER") and os.path.exists("/mnt/wslg/PulseServer"):
     os.environ["PULSE_SERVER"] = "unix:/mnt/wslg/PulseServer"
 
+# Аудио пишем в RAM (tmpfs), а не на диск; удаляем через RETAIN_SECONDS секунд.
+TMP_DIR = os.getenv("OPENCODE_VOICE_TMP_DIR", "/dev/shm/opencode-voice")
+try:
+    RETAIN_SECONDS = float(os.getenv("OPENCODE_VOICE_RETAIN_SECONDS", "300"))
+except ValueError:
+    RETAIN_SECONDS = 300.0
+
 # Model will be loaded in main()
 model = None
 MODEL_SIZE = "medium"
@@ -152,11 +159,39 @@ def _is_wav(path: str) -> bool:
         return False
 
 
+def _new_wav_path() -> str:
+    """Путь для аудио в RAM-каталоге (tmpfs), а не на диске."""
+    try:
+        os.makedirs(TMP_DIR, exist_ok=True)
+    except Exception:
+        pass
+    return tempfile.mktemp(suffix=".wav", dir=TMP_DIR)
+
+
+def _schedule_delete(path: str):
+    """Удалить файл через RETAIN_SECONDS (для отладки/тестов файлы живут 5 минут)."""
+    if os.getenv("OPENCODE_VOICE_KEEP_AUDIO"):
+        return
+    if RETAIN_SECONDS <= 0:
+        return
+
+    def _rm():
+        try:
+            if path and os.path.exists(path):
+                os.unlink(path)
+        except Exception:
+            pass
+
+    t = threading.Timer(RETAIN_SECONDS, _rm)
+    t.daemon = True
+    t.start()
+
+
 def _to_wav(path: str):
     """Конвертация в 16 кГц моно WAV через ffmpeg. Возвращает (путь, временный?)."""
     if _is_wav(path) or not shutil.which("ffmpeg"):
         return path, False
-    out = tempfile.mktemp(suffix=".wav")
+    out = _new_wav_path()
     proc = subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", path,
          "-ar", str(SAMPLE_RATE), "-ac", "1", out],
@@ -165,6 +200,7 @@ def _to_wav(path: str):
     if proc.returncode != 0 or not os.path.exists(out):
         logger.warning(f"ffmpeg convert failed: {(proc.stderr or '').strip()[:200]}")
         return path, False
+    _schedule_delete(out)
     return out, True
 
 
@@ -389,11 +425,7 @@ def _watchdog_fire(expected_proc):
         _rec_file = None
         _rec_timer = None
     _kill_recorder(proc)
-    if path and os.path.exists(path):
-        try:
-            os.unlink(path)
-        except Exception:
-            pass
+    _schedule_delete(path)
 
 
 def _arm_watchdog(proc):
@@ -502,7 +534,7 @@ def record_start():
 
         last_size = 0
         for attempt in range(2):
-            _rec_file = tempfile.mktemp(suffix=".wav")
+            _rec_file = _new_wav_path()
             cmd = _record_cmd(_rec_file)
             if cmd is None:
                 _rec_file = None
@@ -607,7 +639,7 @@ def record_stop():
 
         # Fake-audio test mode: copy the fixture, skip the real process
         if proc is _FAKE:
-            path = tempfile.mktemp(suffix=".wav")
+            path = _new_wav_path()
             shutil.copyfile(FAKE_AUDIO, path)
             logger.info(f"[fake] Recording stopped, using fixture -> {path}")
         elif proc.poll() is not None:
@@ -634,10 +666,7 @@ def record_stop():
     logger.info(f"Recording stopped: {path} ({size} bytes)")
     _keep_audio(path, "rec")
     if size < 2000:
-        try:
-            os.unlink(path)
-        except Exception:
-            pass
+        _schedule_delete(path)
         return jsonify({"text": "", "warning": "recording too short"})
 
     try:
@@ -647,10 +676,7 @@ def record_stop():
         logger.exception("Transcription failed")
         return jsonify({"error": str(e)}), 500
     finally:
-        try:
-            os.unlink(path)
-        except Exception:
-            pass
+        _schedule_delete(path)
 
 
 # ---------------------------------------------------------------------------
@@ -680,7 +706,11 @@ def transcribe():
         return jsonify({"error": "Empty filename"}), 400
 
     suffix = Path(audio_file.filename).suffix or ".webm"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+    try:
+        os.makedirs(TMP_DIR, exist_ok=True)
+    except Exception:
+        pass
+    with tempfile.NamedTemporaryFile(suffix=suffix, dir=TMP_DIR, delete=False) as tmp:
         audio_file.save(tmp.name)
         tmp_path = tmp.name
     _keep_audio(tmp_path, "upload")
@@ -691,10 +721,7 @@ def transcribe():
         logger.exception("Transcription failed")
         return jsonify({"error": str(e)}), 500
     finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        _schedule_delete(tmp_path)
 
 
 if __name__ == "__main__":

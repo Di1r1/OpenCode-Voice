@@ -11,7 +11,7 @@
  */
 
 import { spawn } from "node:child_process"
-import { statSync } from "node:fs"
+import { mkdirSync, statSync } from "node:fs"
 
 export interface PttOptions {
   sampleRate?: number
@@ -39,6 +39,41 @@ function micSource(): string {
   return process.env.OPENCODE_VOICE_SOURCE || "RDPSource"
 }
 
+const DEFAULT_TMP_DIR = "/dev/shm/opencode-voice"
+
+/** Каталог для записей: по умолчанию RAM (tmpfs), а не диск. */
+function recordingDir(): string {
+  const dir = process.env.OPENCODE_VOICE_TMP_DIR || DEFAULT_TMP_DIR
+  try { mkdirSync(dir, { recursive: true }) } catch {}
+  return dir
+}
+
+/** Сколько секунд хранить запись перед удалением (для отладки/тестов). */
+function retainSeconds(): number {
+  const n = Number(process.env.OPENCODE_VOICE_RETAIN_SECONDS ?? "300")
+  return Number.isFinite(n) ? n : 300
+}
+
+/**
+ * Планирует удаление файла через retainSeconds.
+ *
+ * Делается отдельным detached-процессом (sleep + rm), поэтому удаление
+ * переживёт перезапуск плагина. Если задан OPENCODE_VOICE_KEEP_AUDIO
+ * (отладочное сохранение) — файл не удаляем.
+ */
+function scheduleDelete(file: string): void {
+  if (process.env.OPENCODE_VOICE_KEEP_AUDIO) return
+  const sec = retainSeconds()
+  if (sec <= 0) return
+  try {
+    const child = spawn("sh", ["-c", `sleep ${Math.round(sec)}; rm -f "${file}"`], {
+      detached: true,
+      stdio: "ignore",
+    })
+    child.unref()
+  } catch {}
+}
+
 async function which($: any, cmd: string): Promise<string | null> {
   try {
     const out = await $`command -v ${cmd}`.text()
@@ -55,7 +90,8 @@ export async function startPushToTalk($: any, opts: PttOptions = {}): Promise<Pt
   const sr = opts.sampleRate || SAMPLE_RATE
   const ch = opts.channels || CHANNELS
   const max = opts.maxSeconds || 30
-  const file = `/tmp/voice-ptt-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`
+  const file = `${recordingDir()}/voice-ptt-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`
+  scheduleDelete(file)
 
   // Убираем зависшие записи прошлых запусков — они держат микрофон.
   try { await $`pkill -f voice-ptt-`.quiet() } catch {}

@@ -211,6 +211,8 @@ Full variable list: [Configuration](#configuration-environment-variables) below.
 | `WHISPER_LANG_DETECT_THRESHOLD` | language confidence threshold | `0.6` |
 | `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); empty = auto | auto |
 | `OPENCODE_VOICE_SOURCE` | PulseAudio source (microphone) used for recording; pinned so the default cannot drift to `RDPSink.monitor` (playback loopback) | `RDPSource` |
+| `OPENCODE_VOICE_TMP_DIR` | Directory for recordings; defaults to tmpfs **RAM**, not disk | `/dev/shm/opencode-voice` |
+| `OPENCODE_VOICE_RETAIN_SECONDS` | How long to keep a recording before auto-delete (seconds); use `0` to delete right after transcription | `300` |
 | `WHISPER_CPP_BIN` | whisper.cpp CLI path | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
 | `WHISPER_CPP_MODEL` | whisper.cpp ggml model path | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
 | `WHISPER_CPP_MODEL_FALLBACK` | CPU ggml model used when faster-whisper is absent | `…/ggml-small.bin` |
