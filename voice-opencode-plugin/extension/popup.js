@@ -36,6 +36,15 @@ beepsEl.addEventListener('change', () => {
   chrome.storage.local.set({ beeps: beepsEl.checked });
 });
 
+// Комбинация push-to-talk (читается content.js через chrome.storage.onChanged)
+const hotkeyEl = document.getElementById('hotkey');
+chrome.storage.local.get({ hotkey: 'alt+z' }, (v) => {
+  hotkeyEl.value = v.hotkey || 'alt+z';
+});
+hotkeyEl.addEventListener('change', () => {
+  chrome.storage.local.set({ hotkey: hotkeyEl.value });
+});
+
 beepTestBtn.addEventListener('click', async () => {
   try {
     await fetch(`${STT_SERVER}/beep?freq=880`, { headers: authHeaders() });

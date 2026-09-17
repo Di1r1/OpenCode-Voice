@@ -352,18 +352,49 @@ function onVoiceClick(btn) {
   runRecordingFlow(btn);
 }
 
-// Push-to-talk hotkey: hold Alt+Z (page-level; only where the 🎤 button exists).
-const HOTKEY_CODE = 'KeyZ';
+// Push-to-talk hotkey: hold the configured combo (page-level; only where the 🎤 button exists).
+// Default Alt+Z. Stop happens on the key release, on releasing Alt first (the browser
+// often swallows the Z keyup), on Escape, on blur/hidden, and via a safety timeout.
+const HOTKEYS = {
+  'alt+z': { label: 'Alt+Z', code: 'KeyZ', alt: true },
+  'ctrl+shift+z': { label: 'Ctrl+Shift+Z', code: 'KeyZ', ctrl: true, shift: true },
+  'alt+q': { label: 'Alt+Q', code: 'KeyQ', alt: true },
+  'f9': { label: 'F9', code: 'F9' },
+};
+const DEFAULT_HOTKEY = 'alt+z';
+const HOTKEY_MAX_MS = 120000; // safety net: never leave a recording running forever
+let hotkey = HOTKEYS[DEFAULT_HOTKEY];
 let hotkeyActive = false;
 let hotkeyStopPending = false;
+let hotkeySafetyTimer = null;
+
+chrome.storage.local.get({ hotkey: DEFAULT_HOTKEY }, (v) => {
+  hotkey = HOTKEYS[v.hotkey] || HOTKEYS[DEFAULT_HOTKEY];
+});
+chrome.storage.onChanged.addListener((ch) => {
+  if (ch.hotkey) hotkey = HOTKEYS[ch.hotkey.newValue] || HOTKEYS[DEFAULT_HOTKEY];
+});
 
 function hotkeyButton() {
   return document.querySelector('#opencode-voice-btn');
 }
 
-function hotkeyStop() {
+function hotkeyMatches(e) {
+  return e.code === hotkey.code
+    && !!e.altKey === !!hotkey.alt
+    && !!e.ctrlKey === !!hotkey.ctrl
+    && !!e.shiftKey === !!hotkey.shift
+    && !!e.metaKey === !!hotkey.meta;
+}
+
+function hotkeyStop(reason) {
   if (!hotkeyActive) return;
   hotkeyActive = false;
+  if (hotkeySafetyTimer) {
+    clearTimeout(hotkeySafetyTimer);
+    hotkeySafetyTimer = null;
+  }
+  log(`Hotkey: stop (${reason})`);
   if (uiPhase !== 'recording') return;
   // Released before runRecordingFlow armed stopSignal (very short hold):
   // remember it and stop right after the capture starts, otherwise the
@@ -377,27 +408,42 @@ function hotkeyStop() {
 }
 
 window.addEventListener('keydown', (e) => {
-  if (e.repeat || !e.altKey || e.code !== HOTKEY_CODE) return;
-  if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (hotkeyActive) {
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      hotkeyStop('escape');
+    }
+    return;
+  }
+  if (e.repeat || !hotkeyMatches(e)) return;
   const btn = hotkeyButton();
   if (!btn) return;
   e.preventDefault();
   e.stopPropagation();
-  if (hotkeyActive || uiPhase !== 'idle') return;
+  if (uiPhase !== 'idle') return;
   hotkeyActive = true;
   hotkeyStopPending = false;
-  log('Hotkey: start (hold Alt+Z)');
+  hotkeySafetyTimer = setTimeout(() => hotkeyStop('safety-timeout'), HOTKEY_MAX_MS);
+  log(`Hotkey: start (hold ${hotkey.label})`);
   onVoiceClick(btn);
 }, true);
 
 window.addEventListener('keyup', (e) => {
-  if (e.code !== HOTKEY_CODE) return;
-  log('Hotkey: released');
-  hotkeyStop();
+  if (!hotkeyActive) return;
+  // Stop on the hotkey itself or on releasing Alt first: Windows/Chrome can route
+  // the Alt keyup (and the following keyup) to the browser menu, so the page never
+  // sees the Z keyup and the recording would hang.
+  if (e.code === hotkey.code || e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+    e.preventDefault();
+    hotkeyStop(e.code === hotkey.code ? 'keyup' : 'modifier-release');
+  }
 }, true);
 
-// Released while the window lost focus -> stop gracefully.
-window.addEventListener('blur', hotkeyStop);
+// Released while the window lost focus / the tab is hidden -> stop gracefully.
+window.addEventListener('blur', () => hotkeyStop('blur'));
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) hotkeyStop('hidden');
+});
 
 async function runRecordingFlow(btn) {
   uiPhase = 'recording';
@@ -536,7 +582,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.13 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.14 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

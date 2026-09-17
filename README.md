@@ -156,7 +156,7 @@ Replace `/ABS/PATH` with the absolute path to the cloned repo (e.g. `/home/you/O
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. **Load unpacked** → select the `voice-opencode-plugin/extension` folder.
 3. Open the OpenCode web UI — the 🎤 button appears next to the input field.
-4. Optional: **hold `Alt+Z`** on the OpenCode page for push-to-talk — recording runs while you hold the keys, release to stop and transcribe (works only on the OpenCode page).
+4. Optional: **hold `Alt+Z`** on the OpenCode page for push-to-talk — recording runs while you hold the keys, release to stop and transcribe (works only on the OpenCode page). The combo is configurable in the extension popup (`Alt+Z`, `Ctrl+Shift+Z`, `Alt+Q`, `F9`); press the modifier first, then the key, and release in any order (Escape cancels).
 
 The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` lists `localhost`/`127.0.0.1`; add your host to `host_permissions` if it differs. Optional settings in the popup: **access token** and **sound beeps**.
 
@@ -231,7 +231,7 @@ The server and the `/voice` command auto-detect the CLI (`/health` then shows `"
 
 The `backend`/`lang`/`device` choices are persisted to `~/.config/opencode-voice/state.json`, so they survive a restart (env vars still take precedence).
 
-TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk. Web UI: the 🎤 button from the extension, or **hold `Alt+Z`** on the OpenCode page (push-to-talk).
+TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk. Web UI: the 🎤 button from the extension, or **hold `Alt+Z`** on the OpenCode page (push-to-talk; the combo is selectable in the popup).
 
 Known limitations of the TUI command (by OpenCode design): the hook blocks while recording (so there is no live on-screen timer), and a failed attempt is logged as an ERROR in the OpenCode log (the plugin throws to avoid sending an empty prompt).
 

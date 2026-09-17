@@ -22,6 +22,15 @@
   <h3>🎤 OpenCode Voice</h3>
   <div id="status" class="status">Проверка...</div>
   <label class="toggle"><input type="checkbox" id="beeps"> Звуковые сигналы</label>
+  <label class="toggle" style="display:block">Комбинация (удержание)
+    <select id="hotkey"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="alt+z">Alt+Z (по умолчанию)</option>
+      <option value="ctrl+shift+z">Ctrl+Shift+Z</option>
+      <option value="alt+q">Alt+Q</option>
+      <option value="f9">F9</option>
+    </select>
+  </label>
   <label class="toggle" style="display:block">Токен доступа
     <input type="password" id="token" placeholder="OPENCODE_VOICE_TOKEN (необязательно)"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
@@ -31,8 +40,8 @@
   <button id="openBtn" class="btn secondary">Открыть настройки</button>
   <div class="info" id="versions"></div>
   <div class="info">
-    Работает на <code>http://localhost:8765</code> (faster-whisper).
-    Запустите <code>python stt_server.py</code> перед использованием.
+    Работает на <code>http://127.0.0.1:8765</code> (локальный STT-сервер).
+    Установка и запуск — <code>./setup.sh</code>, диагностика — <code>doctor.sh</code>.
   </div>
   <script src="popup.js"></script>
 </body>
