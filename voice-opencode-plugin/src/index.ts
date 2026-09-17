@@ -138,17 +138,30 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       try {
         const rec = await import("./lib/recorder")
         const { transcribe, stripNonSpeech } = await import("./lib/stt")
-        showToast("🎙 Запись: 0 сек")
-        const session = await rec.startPushToTalk($, { maxSeconds: 30 })
-        const t0 = Date.now()
-        const tick = setInterval(() => {
-          const sec = Math.floor((Date.now() - t0) / 1000)
-          if (sec <= 30) showToast(`🎙 Запись: ${sec} сек`)
-        }, 1000)
-        try {
-          await rec.waitPushToTalkEnd(session, 35000)
-        } finally {
-          clearInterval(tick)
+
+        const recordOnce = async () => {
+          showToast("🎙 Запись: 0 сек")
+          const s = await rec.startPushToTalk($, { maxSeconds: 30 })
+          const t0 = Date.now()
+          const tick = setInterval(() => {
+            const sec = Math.floor((Date.now() - t0) / 1000)
+            if (sec <= 30) showToast(`🎙 Запись: ${sec} сек`)
+          }, 1000)
+          try {
+            await rec.waitPushToTalkEnd(s, 35000)
+          } finally {
+            clearInterval(tick)
+          }
+          return s
+        }
+
+        let session = await recordOnce()
+        if (rec.pttFileSize(session.file) < 2000) {
+          // Аудиоканал WSLg отвалился — один раз пересоздаём и пробуем снова.
+          await log("ptt no audio, recovering", { file: session.file })
+          showToast("🔄 Микрофон не отвечает — пересоздаю аудиоканал…")
+          await rec.recoverMic($)
+          session = await recordOnce()
         }
         if (rec.pttFileSize(session.file) < 2000) {
           await log("ptt no audio", { file: session.file })

@@ -5,7 +5,7 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 ## Architecture & Entrypoints
 
 - **Plugin Entrypoint**: `src/index.ts` (also linked to `.opencode/plugins/index.ts` for local loading via `opencode.json`).
-- **Configuration & Env**: `src/lib/config.ts` (`OPENCODE_VOICE_BACKEND`, `OPENAI_API_KEY`, `OPENCODE_VOICE_LANGUAGE`, etc.).
+- **Configuration & Env**: `src/lib/config.ts` (`OPENCODE_VOICE_BACKEND`, `OPENAI_API_KEY`, `OPENCODE_VOICE_LANGUAGE`, etc.). Mic auto-recovery on empty recordings: `OPENCODE_VOICE_AUTO_RECOVER` (default `1`), `WSL_EXE`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`/`_PULSE` (see `recoverMic` in `src/lib/recorder.ts`).
 - **STT Transcription**: `src/lib/stt.ts` (`openai` SDK for `api` backend; `faster-whisper` model required for `local`; CLI fallbacks `whisper.cpp`/`vosk`).
 - **Audio Recording**: `src/lib/recorder.ts` (`startPushToTalk`/`waitPushToTalkEnd`/`stopPushToTalk`/`pttFileSize`; arecord/ffmpeg, mono 16 kHz S16_LE). `/voice` records a fixed 30 s window: start the recorder, wait for it to finish, then transcribe.
 

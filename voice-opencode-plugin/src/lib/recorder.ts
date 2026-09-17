@@ -105,3 +105,25 @@ export function pttFileSize(file: string): number {
     return 0
   }
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Пересоздаёт аудиоканал WSLg (weston + pulseaudio) через интероп wsl.exe.
+ * Тот же рецепт, что в fix-mic.sh: WSLGd перезапускает процессы сам.
+ * Отключается через OPENCODE_VOICE_AUTO_RECOVER=0.
+ */
+export async function recoverMic($: any): Promise<boolean> {
+  if ((process.env.OPENCODE_VOICE_AUTO_RECOVER ?? "1") === "0") return false
+  const wsl = process.env.WSL_EXE || "/mnt/c/Windows/System32/wsl.exe"
+  const sys = (cmd: string) => $`${wsl} --system -e sh -lc ${cmd}`.quiet()
+  try {
+    try { await sys("pkill -9 -x weston") } catch {}
+    await sleep(Number(process.env.OPENCODE_VOICE_RECOVER_WAIT_WESTON || 8000))
+    try { await sys("pkill -9 -x pulseaudio") } catch {}
+    await sleep(Number(process.env.OPENCODE_VOICE_RECOVER_WAIT_PULSE || 5000))
+    return true
+  } catch {
+    return false
+  }
+}
