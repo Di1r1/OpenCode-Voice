@@ -12,6 +12,7 @@ Run:
 """
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -162,6 +163,31 @@ def _to_wav(path: str):
     return out, True
 
 
+# Служебные пометки Whisper на музыке/шуме: [музыка], (смех), ♪, *music* и т.п.
+_NON_SPEECH = re.compile(
+    r"^(музык|music|аплодисмент|applause|смех|laugh|тишин|silence|шум|noise|"
+    r"звук|sound|свист|whistl|кашел|кашл|cough|вздох|sigh|шёпот|шепот|whisper|"
+    r"неразборчив|inaudible|пауза|paus|гудок|сигнал|signal|звон|ring|стук|knock|"
+    r"хлопок|clap|помех|static|инструментал|instrumental|мужской голос|женский голос)",
+    re.IGNORECASE,
+)
+
+
+def _strip_non_speech(text: str) -> str:
+    """Вырезает служебные пометки ([музыка], (смех), ♪ …) из результата распознавания."""
+    t = re.sub(r"\[[^\]]*\]", " ", text)          # [музыка], [Music]
+    t = re.sub(r"\*[^*]*\*", " ", t)              # *music*
+    t = re.sub(
+        r"\(([^)]*)\)",
+        lambda m: " " if _NON_SPEECH.match(m.group(1).strip()) else m.group(0),
+        t,
+    )                                             # (смех), но не (то есть)
+    t = re.sub(r"[♪♫♬♩♭♮#]+", " ", t)             # ноты
+    t = re.sub(r"\s{2,}", " ", t)
+    t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+    return t.strip()
+
+
 def _transcribe_whispercpp(path: str) -> dict:
     lang = LANGUAGE or "auto"
     env = dict(os.environ)
@@ -179,7 +205,7 @@ def _transcribe_whispercpp(path: str) -> dict:
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=180)
         if proc.returncode != 0:
             raise RuntimeError(f"whisper.cpp failed: {(proc.stderr or '').strip()[:300]}")
-        text = proc.stdout.strip()
+        text = _strip_non_speech(proc.stdout.strip())
         logger.info(f"Transcribed via whisper.cpp ({lang}, {time.time() - start:.1f}s): {text[:120]}")
         return {"text": text, "language": lang, "language_probability": 1.0}
     finally:
@@ -209,7 +235,7 @@ def _transcribe_faster_whisper(path: str) -> dict:
         language_detection_segments=LANG_DETECT_SEGMENTS,
         language_detection_threshold=LANG_DETECT_THRESHOLD,
     )
-    text = " ".join(seg.text for seg in segments).strip()
+    text = _strip_non_speech(" ".join(seg.text for seg in segments).strip())
     logger.info(f"Transcribed ({info.language}, {info.language_probability:.2f}): {text[:120]}")
     return {"text": text, "language": info.language, "language_probability": info.language_probability}
 

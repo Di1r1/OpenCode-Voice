@@ -7,11 +7,11 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 - **Plugin Entrypoint**: `src/index.ts` (also linked to `.opencode/plugins/index.ts` for local loading via `opencode.json`).
 - **Configuration & Env**: `src/lib/config.ts` (`OPENCODE_VOICE_BACKEND`, `OPENAI_API_KEY`, `OPENCODE_VOICE_LANGUAGE`, etc.).
 - **STT Transcription**: `src/lib/stt.ts` (`openai` SDK for `api` backend; `faster-whisper` model required for `local`; CLI fallbacks `whisper.cpp`/`vosk`).
-- **Audio Recording**: `src/lib/recorder.ts` (`ffmpeg`/`arecord`/`sox`/`sounddevice` for push-to-talk). Needs `OPENAI_API_KEY` for cloud, or `ffmpeg` + faster-whisper model + ALSA mic for local.
+- **Audio Recording**: `src/lib/recorder.ts` (`startPushToTalk`/`stopPushToTalk`/`waitPushToTalkEnd`; arecord/ffmpeg). Recorder runs detached in the background so a second `/voice` can stop it (hooks are serialized). Needs `OPENAI_API_KEY` for cloud, or `ffmpeg` + faster-whisper model + ALSA mic for local.
 
 ## Commands (`/voice`)
 
-- `/voice` - Push-to-talk recording & transcription into active prompt.
+- `/voice` - Push-to-talk toggle: first call starts a background recording, second call stops it; transcription runs in a background task and the text is inserted into the prompt. Service markers (`[музыка]`, `(смех)`, `♪`) are stripped (`stripNonSpeech` in `src/lib/stt.ts`, `_strip_non_speech` in `stt_server.py`).
 - `/voice <file.wav>` - Transcribe a local audio file.
 - `/voice backend [local|api]` - View/switch STT backend.
 - `/voice lang [ru|en|auto]` - View/change recognition language.

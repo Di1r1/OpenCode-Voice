@@ -25,7 +25,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
   }
-  let pttActive = false
+  let pttSession: { file: string; pid: number; backend: string } | null = null
 
   const log = async (message: string, extra?: Record<string, unknown>) => {
     try {
@@ -114,13 +114,14 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const resolved = file.startsWith("/") ? file : `${directory}/${file}`
         showToast("Распознаю аудио…")
         try {
-          const { transcribe } = await import("../../src/lib/stt")
-          const text = await transcribe({
+          const { transcribe, stripNonSpeech } = await import("../../src/lib/stt")
+          const raw = await transcribe({
             backend: state.backend,
             language: state.language,
             file: resolved,
             $,
           })
+          const text = stripNonSpeech(raw)
           append(text)
           output.parts.length = 0
           output.parts.push({ type: "text", text } as any)
@@ -132,48 +133,54 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
-      // /voice — push-to-talk: запись микрофона -> распознавание -> вставка в prompt.
-      // Повторный /voice во время записи останавливает её.
-      if (pttActive) {
+      // /voice — push-to-talk. Хуки выполняются последовательно, поэтому:
+      // первый вызов запускает фоновую запись и сразу освобождает хук,
+      // повторный — останавливает её; распознаёт фоновый обработчик.
+      const rec = await import("../../src/lib/recorder")
+
+      if (pttSession) {
+        rec.stopPushToTalk(pttSession)
         showToast("⏹ Останавливаю запись…")
-        const { stopPushToTalk } = await import("../../src/lib/recorder")
-        await stopPushToTalk($)
         return
       }
-      pttActive = true
-      showToast("🎙 Запись: 0 сек")
+
       try {
-        const { recordPushToTalk } = await import("../../src/lib/recorder")
-        const { transcribe } = await import("../../src/lib/stt")
-        const file = await recordPushToTalk({
-          $,
-          language: state.language,
-          onProgress: (sec) => {
-            showToast(`🎙 Запись: ${sec} сек`)
-          },
-        })
-        if (file) {
-          showToast("🧠 Распознаю речь…")
-          const text = await transcribe({
-            backend: state.backend,
-            language: state.language,
-            file,
-            $,
-          })
-          append(text)
-          output.parts.length = 0
-          output.parts.push({ type: "text", text } as any)
-          showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
-        }
+        const session = await rec.startPushToTalk($, { maxSeconds: 30 })
+        pttSession = session
+        showToast("🎙 Запись… нажми /voice ещё раз, чтобы остановить")
+        void (async () => {
+          await rec.waitPushToTalkEnd(session, 35000)
+          pttSession = null
+          try {
+            if (rec.pttFileSize(session.file) < 2000) {
+              await log("ptt no audio", { file: session.file })
+              showToast("❌ Микрофон молчит (данных нет). Проверь аудиоканал (fix-mic.sh)", "error")
+              return
+            }
+            showToast("🧠 Распознаю речь…")
+            const { transcribe, stripNonSpeech } = await import("../../src/lib/stt")
+            const raw = await transcribe({
+              backend: state.backend,
+              language: state.language,
+              file: session.file,
+              $,
+            })
+            const text = stripNonSpeech(raw)
+            if (!text) {
+              showToast("🤷 Речь не распознана (только шум)", "error")
+              return
+            }
+            append(text)
+            showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
+          } catch (e: any) {
+            await log("ptt failed", { error: e?.message || String(e) })
+            showToast(`❌ Ошибка: ${e?.message || e}`, "error")
+          }
+        })()
       } catch (e: any) {
-        if (e?.message === "cancelled") {
-          await log("ptt cancelled")
-          return
-        }
-        await log("ptt failed", { error: e?.message || String(e) })
+        pttSession = null
+        await log("ptt start failed", { error: e?.message || String(e) })
         showToast(`❌ Ошибка: ${e?.message || e}`, "error")
-      } finally {
-        pttActive = false
       }
     },
   }
