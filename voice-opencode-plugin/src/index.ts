@@ -124,6 +124,19 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
+      // /voice help — список возможностей
+      if (sub === "help" || sub === "-h" || sub === "--help") {
+        showToast(
+          "Voice:\n" +
+          "• /voice — запись 30 с → текст в поле ввода\n" +
+          "• /voice backend [local|api]\n" +
+          "• /voice lang [ru|en|auto]\n" +
+          "• /voice device [auto|gpu|cpu]\n" +
+          "• /voice <файл.wav|mp3|m4a|ogg|flac>",
+        )
+        return
+      }
+
       // /voice <file.wav> — распознать готовый аудиофайл
       if (parts.length && (parts[0].endsWith(".wav") || parts[0].endsWith(".mp3") || parts[0].endsWith(".m4a") || parts[0].endsWith(".ogg") || parts[0].endsWith(".flac"))) {
         const file = parts[0]
