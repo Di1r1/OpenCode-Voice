@@ -441,6 +441,16 @@ def _wslg_restart():
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         time.sleep(float(os.getenv("WSLG_RESTART_PULSE_WAIT", "5")))
+        # Вернуть default source на микрофон (иначе запись уйдёт в monitor).
+        try:
+            subprocess.run(
+                ["pactl", "set-default-source",
+                 os.getenv("OPENCODE_VOICE_SOURCE", "RDPSource")],
+                timeout=15, check=False,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
         return True
     except Exception as e:
         logger.warning("Авто-восстановление WSLg не удалось: %s", e)
@@ -501,9 +511,13 @@ def record_start():
             logger.info(f"Recording -> {' '.join(cmd)}")
 
             try:
+                rec_env = dict(os.environ)
+                # Явный микрофон: иначе default-source может съехать на RDPSink.monitor
+                # после обрыва канала audin, и запись поймает системный звук.
+                rec_env["PULSE_SOURCE"] = os.getenv("OPENCODE_VOICE_SOURCE", "RDPSource")
                 _rec_proc = subprocess.Popen(
                     cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                    preexec_fn=os.setsid,
+                    preexec_fn=os.setsid, env=rec_env,
                 )
             except Exception as e:
                 _rec_proc = None

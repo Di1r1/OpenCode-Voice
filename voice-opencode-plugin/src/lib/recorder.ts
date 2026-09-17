@@ -28,6 +28,17 @@ export interface PttSession {
 const SAMPLE_RATE = 16000
 const CHANNELS = 1
 
+/**
+ * Явный источник PulseAudio (микрофон).
+ *
+ * Если записывать с default-source, то после обрыва канала audin PulseAudio
+ * переключает default на RDPSink.monitor (лупбек) — и в файл попадает системный
+ * звук вместо голоса. Поэтому источник задаём жёстко.
+ */
+function micSource(): string {
+  return process.env.OPENCODE_VOICE_SOURCE || "RDPSource"
+}
+
 async function which($: any, cmd: string): Promise<string | null> {
   try {
     const out = await $`command -v ${cmd}`.text()
@@ -65,7 +76,11 @@ export async function startPushToTalk($: any, opts: PttOptions = {}): Promise<Pt
     args = ["-nostdin", "-y", "-f", "alsa", "-ar", String(sr), "-ac", String(ch), "-i", "pulse", "-t", String(max), file]
   }
 
-  const child = spawn(bin, args, { detached: true, stdio: "ignore" })
+  const child = spawn(bin, args, {
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, PULSE_SOURCE: micSource() },
+  })
   child.unref()
   if (!child.pid) throw new Error("не удалось запустить рекордер")
   return { file, pid: child.pid, backend }
@@ -122,6 +137,11 @@ export async function recoverMic($: any): Promise<boolean> {
     await sleep(Number(process.env.OPENCODE_VOICE_RECOVER_WAIT_WESTON || 8000))
     try { await sys("pkill -9 -x pulseaudio") } catch {}
     await sleep(Number(process.env.OPENCODE_VOICE_RECOVER_WAIT_PULSE || 5000))
+    // Default source после сброса может уехать на RDPSink.monitor — вернём микрофон.
+    try {
+      const pulse = process.env.PULSE_SERVER || "unix:/mnt/wslg/PulseServer"
+      await $`env PULSE_SERVER=${pulse} pactl set-default-source ${micSource()}`.quiet()
+    } catch {}
     return true
   } catch {
     return false

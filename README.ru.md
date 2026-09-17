@@ -210,6 +210,7 @@ opencode web --hostname 0.0.0.0
 | `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
 | `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); пусто = авто | авто |
+| `OPENCODE_VOICE_SOURCE` | Источник PulseAudio (микрофон) для записи; задаётся явно, чтобы default не съезжал на `RDPSink.monitor` (лупбек воспроизведения) | `RDPSource` |
 | `WHISPER_CPP_BIN` | путь к CLI whisper.cpp | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
 | `WHISPER_CPP_MODEL` | путь к ggml-модели whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
 | `WHISPER_CPP_MODEL_FALLBACK` | CPU ggml-модель, если faster-whisper не установлен | `…/ggml-small.bin` |
