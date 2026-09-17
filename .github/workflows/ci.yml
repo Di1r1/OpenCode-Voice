@@ -28,6 +28,11 @@ jobs:
       - name: Generate .opencode/plugins/index.ts and verify it is deterministic
         run: bash sync-plugin.sh && bash sync-plugin.sh --check
 
+      - name: Validate workflow YAML
+        run: |
+          python3 -m pip install --quiet "pyyaml==6.0.2"
+          bash check-workflows.sh
+
   server:
     name: STT server (Python)
     runs-on: ubuntu-latest

@@ -173,10 +173,11 @@ curl -s 127.0.0.1:8765/health
 # тесты (микрофон и модель не нужны)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 37 тестов сервера
-npm test                   # 33 теста (stripNonSpeech, пути whisper, E2E: пайплайн плагина + сервер по HTTP)
+python3 -m pytest          # 44 теста сервера
+npm test                   # 41 тест (stripNonSpeech, пути whisper, состояние, E2E: пайплайн плагина + сервер по HTTP)
 npm run typecheck
 bash sync-plugin.sh --check
+bash check-workflows.sh    # проверка YAML в .github/workflows/*.yml (нужен PyYAML)
 ```
 
 ### Опционально: ускорение на GPU (NVIDIA + CUDA)
@@ -354,12 +355,13 @@ voice-opencode-plugin/
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg
 ├── setup.sh                 # установка одной командой (зависимости, опциональная GPU-сборка, подсказки)
 ├── sync-plugin.sh           # генерация локальных entry-точек (--check для CI)
+├── check-workflows.sh       # проверка YAML в .github/workflows до пуша (ловит невалидный YAML)
 ├── pytest.ini               # герметичные тесты сервера
 ├── shared/                  # единый источник истины для TS+Python (stt-spec.json, strip-cases.json)
 └── .opencode/               # plugins/index.ts генерируется; tui/web/commands версионируются
 ```
 
-В корне репозитория также `README.md`, `README.ru.md`, `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/ci.yml`.
+В корне репозитория также `README.md`, `README.ru.md`, `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/` (`ci.yml` и `workflow-lint.yml`, который проверяет сам YAML workflow-файлов).
 
 ## Разработка
 
@@ -371,6 +373,7 @@ npm run typecheck
 python3 -m pytest              # тесты сервера (герметично: без микрофона и модели)
 npm test                       # TS-тесты + герметичные E2E (node:test)
 bash sync-plugin.sh --check    # защита CI: entry-точки актуальны
+bash check-workflows.sh        # защита CI: YAML workflow-файлов валиден (нужен PyYAML)
 ```
 
 CI прогоняет те же проверки на каждый push. Для интерактивной разработки: `npm run dev` (`opencode --plugin .`).

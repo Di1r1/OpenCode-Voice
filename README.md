@@ -173,10 +173,11 @@ curl -s 127.0.0.1:8765/health
 # tests (no microphone/model needed)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 37 server tests
-npm test                   # 33 tests (stripNonSpeech, whisper paths, E2E: plugin pipeline + server over HTTP)
+python3 -m pytest          # 44 server tests
+npm test                   # 41 tests (stripNonSpeech, whisper paths, state, E2E: plugin pipeline + server over HTTP)
 npm run typecheck
 bash sync-plugin.sh --check
+bash check-workflows.sh    # validate .github/workflows/*.yml (needs PyYAML)
 ```
 
 ### Optional: GPU acceleration (NVIDIA + CUDA)
@@ -354,12 +355,13 @@ voice-opencode-plugin/
 ├── fix-mic.sh               # recreate the WSLg audio channel
 ├── setup.sh                 # one-command install (deps, optional GPU build, config hints)
 ├── sync-plugin.sh           # generate the local plugin/TUI entry points (--check for CI)
+├── check-workflows.sh       # validate .github/workflows YAML before pushing (catches startup-breaking YAML)
 ├── pytest.ini               # hermetic server tests
 ├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json)
 └── .opencode/               # plugins/index.ts is generated; tui/web/commands are versioned
 ```
 
-Repo root also contains `README.md`, `README.ru.md`, `CHANGELOG.md` (release history), `LICENSE`, and CI in `.github/workflows/ci.yml`.
+Repo root also contains `README.md`, `README.ru.md`, `CHANGELOG.md` (release history), `LICENSE`, and CI in `.github/workflows/` (`ci.yml` plus `workflow-lint.yml`, which validates the workflow YAML itself).
 
 ## Development
 
@@ -371,6 +373,7 @@ npm run typecheck
 python3 -m pytest              # server tests (hermetic: no mic, no model)
 npm test                       # TS tests + hermetic E2E (node:test)
 bash sync-plugin.sh --check    # CI guard: entry points are up to date
+bash check-workflows.sh        # CI guard: workflow YAML is valid (needs PyYAML)
 ```
 
 CI runs the same checks on every push. For interactive development: `npm run dev` (`opencode --plugin .`).

@@ -46,11 +46,15 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   exercises the actual server over HTTP (health, CORS preflight, transcribe with `source=button`,
   Origin guard, beep) with a stub whisper-cli; the latter skips itself when Flask is unavailable.
   Test hooks: `OPENCODE_VOICE_RECORDER_BIN` (plugin) and `OPENCODE_VOICE_STALE_CLEANUP=0` (server).
-- **Full npm packaging.** The package now ships the plugin, the STT server, the Chrome extension,
-  the installer scripts and the OpenCode assets (`.opencode/{skills,tui,web,commands,agents}`), and
-  the plugin resolves `stt-server/stt_server.py` / `doctor.sh` relative to the package, so an npm
-  install works without a repo checkout. `.opencode/tui|web|commands|agents` are versioned now — only
-  `.opencode/plugins/index.ts` stays generated. `npm pack` yields 44 files / ~82 kB.
+- **Full npm packaging.** The package ships the plugin, the STT server, the Chrome extension, the
+  installer scripts and the OpenCode runtime assets (`.opencode/{tui,web,commands}`), and the plugin
+  resolves `stt-server/stt_server.py` / `doctor.sh` relative to the package, so an npm install works
+  without a repo checkout. `.opencode/{tui,web,commands}` are versioned; `plugins/index.ts` (generated),
+  `skills/` and `agents/` (dev material) are local-only. `npm pack` yields 29 files (~182 kB unpacked)
+  with no dev/test files.
+- **Workflow lint.** `voice-opencode-plugin/check-workflows.sh` plus a separate **Workflow lint**
+  GitHub Actions workflow parse every workflow file on each push, so invalid YAML can no longer break
+  CI startup silently (an unquoted colon in a step name once did exactly that).
 - This `CHANGELOG.md`.
 
 ## [0.3.0] - 2026-09-17
