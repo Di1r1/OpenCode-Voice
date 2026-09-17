@@ -133,6 +133,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       }
 
       // /voice — запись 30 секунд -> распознавание -> текст в поле ввода.
+      // При любой ошибке хук бросает исключение: иначе OpenCode отправит
+      // заглушку ("\n") и модель получит пустой запрос.
       try {
         const rec = await import("./lib/recorder")
         const { transcribe, stripNonSpeech } = await import("./lib/stt")
@@ -151,27 +153,34 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         if (rec.pttFileSize(session.file) < 2000) {
           await log("ptt no audio", { file: session.file })
           showToast("❌ Микрофон молчит: запись пустая. Проверь аудиоканал (fix-mic.sh)", "error")
-          return
+          throw new Error("ptt: пустая запись")
         }
         showToast("🧠 Распознаю речь…")
-        const raw = await transcribe({
-          backend: state.backend,
-          language: state.language,
-          file: session.file,
-          $,
-        })
+        let raw: string
+        try {
+          raw = await transcribe({
+            backend: state.backend,
+            language: state.language,
+            file: session.file,
+            $,
+          })
+        } catch (e: any) {
+          await log("ptt transcribe failed", { error: e?.message || String(e) })
+          showToast(`❌ Ошибка распознавания: ${e?.message || e}`, "error")
+          throw new Error("ptt: ошибка распознавания")
+        }
         const text = stripNonSpeech(raw)
         if (!text) {
           showToast("🤷 Речь не распознана (только шум)", "error")
-          return
+          throw new Error("ptt: речь не распознана")
         }
         append(text)
         output.parts.length = 0
         output.parts.push({ type: "text", text } as any)
         showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
       } catch (e: any) {
-        await log("ptt failed", { error: e?.message || String(e) })
-        showToast(`❌ Ошибка: ${e?.message || e}`, "error")
+        await log("ptt aborted", { error: e?.message || String(e) })
+        throw e
       }
     },
   }
