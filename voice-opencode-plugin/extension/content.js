@@ -194,6 +194,15 @@ function beep(freq = 880, ms = 120) {
   } catch {}
 }
 
+// AudioContext надо создать/возобновить прямо в обработчике клика: иначе
+// политика автовоспроизведения браузера глушит сигналы (клик — единственный жест).
+function primeAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch {}
+}
+
 async function startCapture() {
   // 1. Микрофон браузера (работает, когда Windows/RDP отдаёт микрофон)
   if (navigator.mediaDevices?.getUserMedia && window.MediaRecorder) {
@@ -309,6 +318,7 @@ function syncButton() {
 
 // Стабильный обработчик: клик либо начинает, либо останавливает
 function onVoiceClick(btn) {
+  primeAudio();
   if (uiPhase === 'recording') {
     if (stopSignal) stopSignal();
     return;
