@@ -133,6 +133,68 @@ Install `voice-button.user.js` in Tampermonkey (or similar) — it adds the 🎤
 
 TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk.
 
+## CPU vs GPU (local recognition)
+
+The local backend uses the GPU when possible and **falls back to the CPU automatically**.
+
+| Device | What runs |
+|--------|-----------|
+| `auto` (default) + CUDA (`libcuda` present) | `whisper.cpp` + `ggml-medium.bin` on GPU |
+| `auto` + no GPU | `faster-whisper` (medium) on CPU |
+| `gpu` | `whisper.cpp` on GPU only (errors if unavailable, no silent fallback) |
+| `cpu` | `faster-whisper` on CPU only |
+
+You do **not** need a CUDA/whisper.cpp build to use the CPU path.
+
+### Switch to CPU manually
+
+Runtime, for the current `/voice` session (`/voice dev` also works):
+
+```
+/voice device          # show current device
+/voice device cpu      # CPU: faster-whisper
+/voice device gpu      # GPU: whisper.cpp
+/voice device auto     # GPU if available, otherwise CPU
+```
+
+Persistent, via environment variables:
+
+```bash
+export OPENCODE_VOICE_DEVICE=cpu              # preferred
+# legacy alias, equivalent:
+export OPENCODE_VOICE_STT_BACKEND=faster-whisper
+```
+
+`/voice device` resets when OpenCode restarts — use the env variable to pin it.
+The STT server (the 🎤 button path) reads `OPENCODE_VOICE_DEVICE=cpu` too; restart the server after changing it.
+
+### Example: CPU-only machine (no NVIDIA GPU)
+
+```bash
+cd voice-opencode-plugin/stt-server
+pip install --no-input faster-whisper flask requests
+export OPENCODE_VOICE_DEVICE=cpu
+export OPENCODE_VOICE_LANGUAGE=ru
+# medium is the default; on a slow CPU choose a smaller model:
+# export WHISPER_MODEL=small
+export PULSE_SERVER=unix:/mnt/wslg/PulseServer
+opencode web --hostname 0.0.0.0
+```
+
+### Model and recognition settings
+
+- CPU model size: `WHISPER_MODEL=medium` (default) — `tiny` | `base` | `small` | `medium` | `large`.
+- GPU model file: `WHISPER_CPP_MODEL=…/ggml-medium.bin` — point it at any `ggml-*.bin`.
+- `WHISPER_CPP_BIN` — path to the `whisper-cli` binary.
+- `WHISPER_CPP_MODEL_FALLBACK` — ggml model used when `faster-whisper` is not installed (default `ggml-small.bin`).
+- `WHISPER_BEAM_SIZE` — decoder beam (`1` = greedy/fastest, higher = slightly better but slower).
+- `WHISPER_VAD` — voice-activity filter (`1`/`0`).
+- `WHISPER_INITIAL_PROMPT` — context hint for Whisper (off by default).
+- `WHISPER_LANG_DETECT_SEGMENTS` / `WHISPER_LANG_DETECT_THRESHOLD` — auto language detection tuning.
+- `/voice lang ru|en|auto` — switch language at runtime; `/voice backend local|api` — local vs OpenAI API.
+
+Full variable list: [Configuration](#configuration-environment-variables) below.
+
 ## Configuration (environment variables)
 
 | Variable | Purpose | Default |

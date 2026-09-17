@@ -133,6 +133,68 @@ opencode web --hostname 0.0.0.0
 
 TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) запускает push-to-talk.
 
+## CPU или GPU (локальное распознавание)
+
+Локальный бэкенд использует GPU, когда он есть, и **автоматически откатывается на CPU**.
+
+| Устройство | Что запускается |
+|------------|-----------------|
+| `auto` (по умолчанию) + CUDA (есть `libcuda`) | `whisper.cpp` + `ggml-medium.bin` на GPU |
+| `auto` без видеокарты | `faster-whisper` (medium) на CPU |
+| `gpu` | только `whisper.cpp` на GPU (при недоступности — ошибка, без тихого отката) |
+| `cpu` | только `faster-whisper` на CPU |
+
+Для CPU-пути **не нужна** сборка whisper.cpp/CUDA.
+
+### Как вручную переключиться на CPU
+
+В рантайме, для текущей сессии `/voice` (синоним `/voice dev`):
+
+```
+/voice device          # показать текущее
+/voice device cpu      # CPU: faster-whisper
+/voice device gpu      # GPU: whisper.cpp
+/voice device auto     # GPU, если есть, иначе CPU
+```
+
+Постоянно, через переменные окружения:
+
+```bash
+export OPENCODE_VOICE_DEVICE=cpu              # предпочтительно
+# старый алиас, то же самое:
+export OPENCODE_VOICE_STT_BACKEND=faster-whisper
+```
+
+`/voice device` сбрасывается при перезапуске OpenCode — чтобы закрепить выбор, используйте переменную окружения.
+STT-сервер (путь кнопки 🎤) тоже читает `OPENCODE_VOICE_DEVICE=cpu`; после смены переменной перезапустите сервер.
+
+### Пример: машина без NVIDIA GPU
+
+```bash
+cd voice-opencode-plugin/stt-server
+pip install --no-input faster-whisper flask requests
+export OPENCODE_VOICE_DEVICE=cpu
+export OPENCODE_VOICE_LANGUAGE=ru
+# medium — по умолчанию; на медленном CPU возьмите модель меньше:
+# export WHISPER_MODEL=small
+export PULSE_SERVER=unix:/mnt/wslg/PulseServer
+opencode web --hostname 0.0.0.0
+```
+
+### Модель и настройки распознавания
+
+- Размер модели на CPU: `WHISPER_MODEL=medium` (по умолчанию) — `tiny` | `base` | `small` | `medium` | `large`.
+- Файл модели на GPU: `WHISPER_CPP_MODEL=…/ggml-medium.bin` — можно указать любой `ggml-*.bin`.
+- `WHISPER_CPP_BIN` — путь к бинарнику `whisper-cli`.
+- `WHISPER_CPP_MODEL_FALLBACK` — ggml-модель, если `faster-whisper` не установлен (по умолчанию `ggml-small.bin`).
+- `WHISPER_BEAM_SIZE` — beam декодера (`1` = greedy/быстрее всего, больше = чуть точнее, но медленнее).
+- `WHISPER_VAD` — VAD-фильтр (`1`/`0`).
+- `WHISPER_INITIAL_PROMPT` — подсказка-контекст для Whisper (по умолчанию выкл).
+- `WHISPER_LANG_DETECT_SEGMENTS` / `WHISPER_LANG_DETECT_THRESHOLD` — тонкая настройка авто-определения языка.
+- `/voice lang ru|en|auto` — смена языка в рантайме; `/voice backend local|api` — локальные модели или OpenAI API.
+
+Полный список переменных: [Конфигурация](#конфигурация-переменные-окружения) ниже.
+
 ## Конфигурация (переменные окружения)
 
 | Переменная | Назначение | По умолчанию |
