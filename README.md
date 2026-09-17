@@ -193,6 +193,7 @@ opencode web --hostname 0.0.0.0
 - `WHISPER_CPP_MODEL_FALLBACK` — ggml model used when `faster-whisper` is not installed (default `ggml-small.bin`).
 - `WHISPER_BEAM_SIZE` — decoder beam (`1` = greedy/fastest, higher = slightly better but slower).
 - `WHISPER_VAD` — voice-activity filter (`1`/`0`).
+- `OPENCODE_VOICE_SILENCE_PEAK` / `OPENCODE_VOICE_SILENCE_RMS` — silence gate: audio below both thresholds counts as "no speech" (Whisper hallucinates on silence). Defaults `700` / `80`.
 - `WHISPER_INITIAL_PROMPT` — context hint for Whisper (off by default).
 - `WHISPER_LANG_DETECT_SEGMENTS` / `WHISPER_LANG_DETECT_THRESHOLD` — auto language detection tuning.
 - `/voice lang ru|en|auto` — switch language at runtime; `/voice backend local|api` — local vs OpenAI API.
@@ -210,6 +211,8 @@ Full variable list: [Configuration](#configuration-environment-variables) below.
 | `WHISPER_MODEL` | model for the plugin's local (faster-whisper) backend | `medium` |
 | `WHISPER_BEAM_SIZE` | decoder beam size (`1` = greedy, fastest) | `1` |
 | `WHISPER_VAD` | voice-activity filter (`1`/`0`) | `1` |
+| `OPENCODE_VOICE_SILENCE_PEAK` | Silence gate: peak amplitude below which audio is treated as silence | `700` |
+| `OPENCODE_VOICE_SILENCE_RMS` | Silence gate: RMS amplitude below which audio is treated as silence | `80` |
 | `WHISPER_INITIAL_PROMPT` | context hint for Whisper | empty (off) |
 | `WHISPER_LANG_DETECT_SEGMENTS` | segments used for auto language detection | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | language confidence threshold | `0.6` |

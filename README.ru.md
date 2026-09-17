@@ -193,6 +193,7 @@ opencode web --hostname 0.0.0.0
 - `WHISPER_CPP_MODEL_FALLBACK` — ggml-модель, если `faster-whisper` не установлен (по умолчанию `ggml-small.bin`).
 - `WHISPER_BEAM_SIZE` — beam декодера (`1` = greedy/быстрее всего, больше = чуть точнее, но медленнее).
 - `WHISPER_VAD` — VAD-фильтр (`1`/`0`).
+- `OPENCODE_VOICE_SILENCE_PEAK` / `OPENCODE_VOICE_SILENCE_RMS` — порог тишины: если пик и RMS ниже обоих значений, запись считается «без речи» (Whisper галлюцинирует на тишине). По умолчанию `700` / `80`.
 - `WHISPER_INITIAL_PROMPT` — подсказка-контекст для Whisper (по умолчанию выкл).
 - `WHISPER_LANG_DETECT_SEGMENTS` / `WHISPER_LANG_DETECT_THRESHOLD` — тонкая настройка авто-определения языка.
 - `/voice lang ru|en|auto` — смена языка в рантайме; `/voice backend local|api` — локальные модели или OpenAI API.
@@ -210,6 +211,8 @@ opencode web --hostname 0.0.0.0
 | `WHISPER_MODEL` | модель локального бэкенда плагина (faster-whisper) | `medium` |
 | `WHISPER_BEAM_SIZE` | beam size декодера (`1` = greedy, быстрее всего) | `1` |
 | `WHISPER_VAD` | VAD-фильтр (`1`/`0`) | `1` |
+| `OPENCODE_VOICE_SILENCE_PEAK` | Порог тишины: пик ниже значения — запись считается тишиной | `700` |
+| `OPENCODE_VOICE_SILENCE_RMS` | Порог тишины: RMS ниже значения — запись считается тишиной | `80` |
 | `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |
 | `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |

@@ -7,7 +7,7 @@
  *        Если ни одно не доступно — бросает понятную ошибку.
  */
 
-import { appendFileSync, existsSync } from "node:fs"
+import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { config } from "./config"
@@ -22,6 +22,54 @@ function note(backend: string, info: string): void {
   } catch {
     // диагностика best-effort
   }
+}
+
+// Порог тишины: на тишине/шуме Whisper галлюцинирует, поэтому не тратим на неё проход.
+const SILENCE_PEAK = Number(process.env.OPENCODE_VOICE_SILENCE_PEAK || 700)
+const SILENCE_RMS = Number(process.env.OPENCODE_VOICE_SILENCE_RMS || 80)
+
+function wavLevels(file: string): { peak: number; rms: number } | null {
+  try {
+    const buf = readFileSync(file)
+    if (buf.length < 44 || buf.toString("ascii", 0, 4) !== "RIFF") return null
+    let pos = 12
+    let dataOff = -1
+    let dataLen = 0
+    let bits = 16
+    while (pos + 8 <= buf.length) {
+      const id = buf.toString("ascii", pos, pos + 4)
+      const size = buf.readUInt32LE(pos + 4)
+      if (id === "fmt ") bits = buf.readUInt16LE(pos + 22)
+      if (id === "data") {
+        dataOff = pos + 8
+        dataLen = Math.min(size, buf.length - dataOff)
+        break
+      }
+      pos += 8 + size + (size % 2)
+    }
+    if (dataOff < 0 || bits !== 16) return null
+    let peak = 0
+    let sum = 0
+    let n = 0
+    for (let i = 0; i + 1 < dataLen; i += 2) {
+      const v = buf.readInt16LE(dataOff + i)
+      const a = Math.abs(v)
+      if (a > peak) peak = a
+      sum += v * v
+      n++
+    }
+    return { peak, rms: n ? Math.sqrt(sum / n) : 0 }
+  } catch {
+    return null
+  }
+}
+
+function isSilentWav(file: string): boolean {
+  const lv = wavLevels(file)
+  if (!lv) return false
+  const silent = lv.peak < SILENCE_PEAK && lv.rms < SILENCE_RMS
+  note("levels", `peak=${lv.peak.toFixed(0)} rms=${lv.rms.toFixed(0)} silent=${silent}`)
+  return silent
 }
 
 // Служебные пометки Whisper на музыке/шуме: [музыка], (смех), ♪, *music* и т.п.
@@ -132,6 +180,10 @@ async function transcribeApi(opts: { file: string; language: string; $: any }): 
 async function transcribeLocal(opts: { file: string; language: string; device?: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
   const pref = (process.env.OPENCODE_VOICE_STT_BACKEND || "").toLowerCase()
+
+  if (isSilentWav(file)) {
+    throw new Error("речь не распознана: тишина (проверь микрофон / RDP-источник)")
+  }
 
   // Устройство: auto (по умолчанию) | gpu | cpu.
   // OPENCODE_VOICE_STT_BACKEND оставлен для совместимости.
@@ -283,7 +335,7 @@ async function transcribeWhisperCpp(opts: { file: string; language: string; $: a
     path.join(os.homedir(), "cuda-12.6/lib64"),
     "/usr/lib/wsl/lib",
   ].join(":")
-  const out = await $`env LD_LIBRARY_PATH=${ld} ${cli} -m ${model} -f ${file} -l ${lang} -nt -np`.text()
+  const out = await $`env LD_LIBRARY_PATH=${ld} ${cli} -m ${model} -f ${file} -l ${lang} -nt -np -mc 0 -sns`.text()
   const text = out.trim()
   if (!text) throw new Error("whisper.cpp не выдал текст")
   return text

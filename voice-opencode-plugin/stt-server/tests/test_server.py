@@ -221,3 +221,54 @@ def test_runtime_checks_smoke(monkeypatch):
 def test_cuda_driver_version_type():
     v = srv._cuda_driver_version()
     assert v is None or isinstance(v, str)
+
+
+def test_wav_levels_silence_and_tone(tmp_path):
+    silent = tmp_path / "silent.wav"
+    silent.write_bytes(make_wav(0.3).getvalue())
+    peak, rms = srv._wav_levels(str(silent))
+    assert (peak, rms) == (0.0, 0.0)
+    assert srv._is_silent(str(silent)) is True
+
+    tone = tmp_path / "tone.wav"
+    tone.write_bytes(make_wav(0.3, freq=440).getvalue())
+    peak, rms = srv._wav_levels(str(tone))
+    assert peak > srv.SILENCE_PEAK and rms > srv.SILENCE_RMS
+    assert srv._is_silent(str(tone)) is False
+
+
+def test_wav_levels_rejects_non_wav(tmp_path):
+    bad = tmp_path / "bad.wav"
+    bad.write_bytes(b"not a wav at all")
+    assert srv._wav_levels(str(bad)) == (None, None)
+    assert srv._is_silent(str(bad)) is False
+
+
+def test_whispercpp_short_circuits_on_silence(tmp_path, monkeypatch):
+    silent = tmp_path / "silent.wav"
+    silent.write_bytes(make_wav(0.3).getvalue())
+    monkeypatch.setattr(srv, "WHISPER_CPP_BIN", "/nonexistent/whisper-cli")
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", "/nonexistent/model.bin")
+    assert srv._transcribe_whispercpp(str(silent))["text"] == ""
+
+
+def test_whispercpp_antihallucination_flags(tmp_path, monkeypatch):
+    tone = tmp_path / "tone.wav"
+    tone.write_bytes(make_wav(0.3, freq=440).getvalue())
+    captured = {}
+
+    class Result:
+        returncode = 0
+        stdout = "привет"
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return Result()
+
+    monkeypatch.setattr(srv, "WHISPER_CPP_BIN", "whisper-cli")
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", "model.bin")
+    monkeypatch.setattr(srv.subprocess, "run", fake_run)
+    assert srv._transcribe_whispercpp(str(tone))["text"] == "привет"
+    assert "-mc" in captured["cmd"] and "0" in captured["cmd"]
+    assert "-sns" in captured["cmd"]

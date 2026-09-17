@@ -11,6 +11,7 @@ Run:
     python3 stt_server.py
 """
 
+import array
 import os
 import platform
 import re
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import threading
 import time
+import wave
 import logging
 from pathlib import Path
 from flask import Flask, request, jsonify
@@ -337,6 +339,38 @@ def _strip_non_speech(text: str) -> str:
     return t.strip()
 
 
+SILENCE_PEAK = int(os.getenv("OPENCODE_VOICE_SILENCE_PEAK", "700"))
+SILENCE_RMS = int(os.getenv("OPENCODE_VOICE_SILENCE_RMS", "80"))
+
+
+def _wav_levels(path: str) -> tuple:
+    """(peak, rms) по PCM16-данным WAV; (None, None), если это не 16-бит PCM."""
+    try:
+        with wave.open(path, "rb") as w:
+            if w.getsampwidth() != 2:
+                return None, None
+            raw = w.readframes(w.getnframes())
+        samples = array.array("h")
+        samples.frombytes(raw)
+        if not samples:
+            return 0.0, 0.0
+        peak = max(abs(x) for x in samples)
+        rms = (sum(x * x for x in samples) / len(samples)) ** 0.5
+        return float(peak), float(rms)
+    except Exception:
+        return None, None
+
+
+def _is_silent(path: str) -> bool:
+    """Тишина/шум: не гоняем Whisper — на тишине он галлюцинирует."""
+    peak, rms = _wav_levels(path)
+    if peak is None:
+        return False
+    silent = peak < SILENCE_PEAK and rms < SILENCE_RMS
+    logger.info(f"audio levels: peak={peak:.0f} rms={rms:.0f} -> silent={silent}")
+    return silent
+
+
 def _transcribe_whispercpp(path: str) -> dict:
     lang = LANGUAGE or "auto"
     env = dict(os.environ)
@@ -348,7 +382,12 @@ def _transcribe_whispercpp(path: str) -> dict:
     # поэтому не-WAV вход конвертируем через ffmpeg.
     audio, is_temp = _to_wav(path)
     try:
-        cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", audio, "-l", lang, "-nt", "-np"]
+        if _is_silent(audio):
+            logger.info("Transcribed via whisper.cpp: речи нет (тишина) — пропускаю")
+            return {"text": "", "language": lang, "language_probability": 1.0}
+        # -mc 0 (без переноса контекста) и -sns (без не-речевых токенов) снижают галлюцинации.
+        cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", audio, "-l", lang,
+               "-nt", "-np", "-mc", "0", "-sns"]
         logger.info(f"whisper.cpp -> {' '.join(cmd)}")
         start = time.time()
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=180)
@@ -404,6 +443,9 @@ def _ensure_faster_whisper():
 
 
 def _transcribe_faster_whisper(path: str) -> dict:
+    if _is_silent(path):
+        logger.info("Transcribed: речи нет (тишина) — пропускаю")
+        return {"text": "", "language": LANGUAGE or "auto", "language_probability": 0.0}
     segments, info = model.transcribe(
         path,
         language=LANGUAGE,          # None → авто, либо ru/en из env
