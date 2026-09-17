@@ -1,5 +1,7 @@
 # OpenCode Voice
 
+> OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
+
 Голосовой ввод для [OpenCode](https://opencode.ai): говорите — текст попадает в поле ввода. Работает локально (`faster-whisper` на CPU, `whisper.cpp` на GPU) или в облаке (OpenAI Whisper API): push-to-talk в TUI, кнопка 🎤 в веб-интерфейсе и встроенный `doctor` для диагностики.
 
 [English](README.md) | **Русский**

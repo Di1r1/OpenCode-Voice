@@ -4,6 +4,7 @@ description: Use when the question is about OpenCode Voice as a whole — what i
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: both
   workflow: orientation
 ---

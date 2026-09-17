@@ -4,6 +4,7 @@ description: Use when editing or debugging the OpenCode Voice plugin itself — 
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: developers
   workflow: implementation
 ---

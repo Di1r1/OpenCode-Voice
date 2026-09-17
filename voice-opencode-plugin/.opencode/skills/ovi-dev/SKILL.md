@@ -4,6 +4,7 @@ description: Use when developing or releasing OpenCode Voice — typecheck, pyte
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: maintainers
   workflow: release
 ---

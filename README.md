@@ -1,5 +1,7 @@
 # OpenCode Voice
 
+> OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
+
 Voice input for [OpenCode](https://opencode.ai): speak, and your words land in the prompt. Works locally (`faster-whisper` on CPU, `whisper.cpp` on GPU) or in the cloud (OpenAI Whisper API), with push-to-talk in the TUI, a 🎤 button in the web UI, and a built-in `doctor` for diagnostics.
 
 **English** | [Русский](README.ru.md)

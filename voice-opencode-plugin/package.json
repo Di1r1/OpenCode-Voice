@@ -46,5 +46,6 @@
     "whisper",
     "speech-to-text"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "author": "Di1r1"
 }

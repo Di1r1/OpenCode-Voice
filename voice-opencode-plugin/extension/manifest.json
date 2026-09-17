@@ -9,13 +9,30 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost:*/*", "http://127.0.0.1:*/*", "http://172.16.0.0/12:*/*", "http://192.168.0.0/16:*/*"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*",
+    "http://172.16.0.0/12:*/*",
+    "http://192.168.0.0/16:*/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["http://localhost:*/*", "http://127.0.0.1:*/*", "<all_urls>"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*",
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -28,5 +45,6 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
-  }
+  },
+  "author": "Di1r1"
 }

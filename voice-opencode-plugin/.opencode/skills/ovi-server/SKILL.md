@@ -4,6 +4,7 @@ description: Use when working with the OpenCode Voice STT HTTP server — /healt
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: developers
   workflow: server
 ---

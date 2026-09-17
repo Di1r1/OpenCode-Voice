@@ -4,6 +4,7 @@ description: Use when working with the OpenCode Voice Chrome extension or the mi
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: both
   workflow: capture
 ---

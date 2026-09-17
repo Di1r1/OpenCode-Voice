@@ -4,6 +4,7 @@ description: Use when choosing or tuning STT models/backends, setting up GPU (CU
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: both
   workflow: models
 ---

@@ -1,6 +1,10 @@
 ---
 name: ovi-security
 description: Использовать при вопросах безопасности и приватности OpenCode Voice — токен доступа, CORS-allowlist, bind на 127.0.0.1, что остаётся в записях и логах, ретеншен/ОЗУ, гигиена секретов в публичном репозитории, права расширения. Ключевые слова: токен, X-Voice-Token, CORS, host, 0.0.0.0, приватность, секреты, публичный репо, retention, KEEP_AUDIO.
+license: MIT
+compatibility: opencode
+metadata:
+  author: Di1r1
 ---
 
 # Безопасность и приватность

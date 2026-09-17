@@ -1,3 +1,4 @@
+// OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
 // OpenCode Voice - Popup Script
 
 const STT_SERVER = 'http://127.0.0.1:8765';

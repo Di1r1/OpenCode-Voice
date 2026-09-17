@@ -4,6 +4,7 @@ description: Use when OpenCode Voice misbehaves — the extension button says "F
 license: MIT
 compatibility: opencode
 metadata:
+  author: Di1r1
   audience: both
   workflow: troubleshooting
 ---

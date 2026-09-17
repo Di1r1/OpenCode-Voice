@@ -1,5 +1,7 @@
 # Навыки (skills) в OpenCode Voice: подключение и эксплуатация
 
+> OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
+
 > **Версия:** 1.0 · **Дата:** 2026-09-17
 > **Статус:** рабочий документ; описывает фактическую конфигурацию проекта
 > **Область:** `.opencode/skills/`, `AGENTS.md` (таблица маршрутизации), глобальный `~/.config/opencode/`

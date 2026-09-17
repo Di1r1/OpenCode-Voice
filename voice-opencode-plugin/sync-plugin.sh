@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
 # Синхронизирует src/index.ts -> .opencode/plugins/index.ts
 # с заменой путей импортов ("./lib/ -> "../../src/lib/).
 #

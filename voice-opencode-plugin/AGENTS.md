@@ -1,5 +1,7 @@
 # OpenCode Voice Plugin
 
+> OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
+
 Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and cloud (OpenAI Whisper API) backends, push-to-talk recording, and audio file transcription.
 
 ## Architecture & Entrypoints
