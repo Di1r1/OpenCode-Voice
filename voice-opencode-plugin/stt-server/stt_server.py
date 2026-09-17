@@ -1090,13 +1090,64 @@ def record_stop():
 
 _restart_timer = None
 
+# Помощник перезапуска: дожидается, пока старый сервер перестанет отвечать на
+# порту, и запускает сервер заново. Позволяет подниматься за ~3-5 с, не ожидая
+# watchdog плагина (до 120 с). Ждём через connect (а не bind): так корректно
+# определяется живой слушатель.
+_RESPAWN_HELPER = (
+    "import os, socket, sys, time\n"
+    "port = int(sys.argv[1]); cmd = sys.argv[2:]\n"
+    "for _ in range(300):\n"
+    "    s = socket.socket(); s.settimeout(0.3)\n"
+    "    try:\n"
+    "        s.connect(('127.0.0.1', port))\n"
+    "    except OSError:\n"
+    "        s.close(); break\n"
+    "    s.close(); time.sleep(0.2)\n"
+    "time.sleep(0.3)\n"
+    "os.execv(cmd[0], cmd)\n"
+)
 
-def _restart_self():
-    """Точка выхода процесса: watchdog плагина поднимет сервер заново.
 
-    Вынесено в отдельную функцию, чтобы тесты не завершали процесс.
-    """
-    logger.warning("Restart requested — exiting so the plugin watchdog revives the server")
+def _server_port_from_argv() -> int:
+    """Порт из sys.argv (--port N / --port=N), иначе env или 8765."""
+    argv = sys.argv
+    for i, a in enumerate(argv):
+        if a == "--port" and i + 1 < len(argv):
+            try:
+                return int(argv[i + 1])
+            except ValueError:
+                return 8765
+        if a.startswith("--port="):
+            try:
+                return int(a.split("=", 1)[1])
+            except ValueError:
+                return 8765
+    try:
+        return int(os.getenv("OPENCODE_VOICE_PORT", "8765") or 8765)
+    except ValueError:
+        return 8765
+
+
+def _respawn() -> bool:
+    """Отсоединённо запускает новый процесс сервера (с ожиданием порта)."""
+    cmd = [sys.executable, "-u", os.path.abspath(sys.argv[0]), *sys.argv[1:]]
+    subprocess.Popen(
+        [sys.executable, "-c", _RESPAWN_HELPER, str(_server_port_from_argv()), *cmd],
+        start_new_session=True,         # новый сеанс — переживёт наш выход
+        close_fds=True,                  # НЕ наследовать слушающий сокет (иначе порт занят)
+        stdout=sys.stdout, stderr=sys.stderr,  # но лог (fd 1/2) сохранить
+        cwd=os.getcwd(),
+    )
+    return True
+
+
+def _restart_self(respawned: bool = False):
+    """Точка выхода процесса. Вынесена в отдельную функцию, чтобы тесты не завершали процесс."""
+    if respawned:
+        logger.warning("Restart requested — respawning a detached server process")
+    else:
+        logger.warning("Restart requested — exiting so the plugin watchdog revives the server")
 
 
 def _restart_soon(delay: float = 1.5):
@@ -1104,7 +1155,12 @@ def _restart_soon(delay: float = 1.5):
     global _restart_timer
 
     def _fire():
-        _restart_self()
+        respawned = False
+        try:
+            respawned = _respawn()
+        except Exception as e:  # pragma: no cover - зависит от окружения
+            logger.error(f"self-respawn failed: {e}")
+        _restart_self(respawned)
         os._exit(0)
 
     _restart_timer = threading.Timer(delay, _fire)
@@ -1345,4 +1401,11 @@ if __name__ == "__main__":
     )
     _purge_old_files()
     threading.Thread(target=_purge_loop, daemon=True).start()
-    app.run(host=args.host, port=args.port, threaded=True)
+    # При перезапуске (/heal) порт может освобождаться не мгновенно — пробуем снова.
+    for _attempt in range(40):
+        try:
+            app.run(host=args.host, port=args.port, threaded=True)
+            break
+        except SystemExit:
+            logger.warning("порт ещё занят — повторная попытка через 0.5 с")
+            time.sleep(0.5)

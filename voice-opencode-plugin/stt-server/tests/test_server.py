@@ -571,3 +571,30 @@ def test_heal_resets_stuck_recording(client):
     assert r.get_json()["recording_reset"] is True
     assert srv._rec_proc is None
     assert srv._rec_file is None
+
+
+def test_server_port_from_argv(monkeypatch):
+    monkeypatch.setattr(srv.sys, "argv", ["stt_server.py", "--port", "9123"])
+    assert srv._server_port_from_argv() == 9123
+    monkeypatch.setattr(srv.sys, "argv", ["stt_server.py", "--port=9124"])
+    assert srv._server_port_from_argv() == 9124
+    monkeypatch.setattr(srv.sys, "argv", ["stt_server.py"])
+    monkeypatch.setenv("OPENCODE_VOICE_PORT", "9125")
+    assert srv._server_port_from_argv() == 9125
+
+
+def test_respawn_does_not_inherit_listening_socket(monkeypatch):
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(srv.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(srv.sys, "argv", ["stt_server.py", "--port", "9123"])
+    assert srv._respawn() is True
+    assert captured["kwargs"]["close_fds"] is True  # иначе наследуется слушающий сокет
+    assert captured["kwargs"]["start_new_session"] is True
+    assert "9123" in captured["args"]
+    assert captured["kwargs"]["stdout"] is srv.sys.stdout

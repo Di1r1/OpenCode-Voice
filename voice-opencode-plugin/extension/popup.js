@@ -4,6 +4,8 @@
 // Хост сервера: по умолчанию 127.0.0.1, но content.js запоминает хост страницы
 // (актуально при доступе к OpenCode по LAN/IP) — читаем его ниже.
 let STT_SERVER = 'http://127.0.0.1:8765';
+// Пока идёт восстановление, не показываем красные ошибки на транзиентных сбоях.
+let healing = false;
 const statusEl = document.getElementById('status');
 const testBtn = document.getElementById('testBtn');
 const openBtn = document.getElementById('openBtn');
@@ -81,6 +83,11 @@ async function checkServer() {
       throw new Error(`HTTP ${res.status}`);
     }
   } catch (err) {
+    if (healing) {
+      statusEl.textContent = '⏳ Жду сервер…';
+      statusEl.className = 'status';
+      return;
+    }
     statusEl.textContent = `❌ STT сервер недоступен: ${err.message}`;
     statusEl.className = 'status error';
     testBtn.disabled = true;
@@ -131,7 +138,7 @@ async function waitForServer(timeoutMs) {
   const started = Date.now();
   const deadline = started + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 2000));
     try {
       const res = await fetch(`${STT_SERVER}/health`, { headers: authHeaders() });
       if (res.ok) {
@@ -155,12 +162,14 @@ healBtn.addEventListener('click', async () => {
   healBtn.textContent = '🔧 Восстанавливаю…';
   statusEl.textContent = '🔧 Перезапускаю STT-сервер…';
   statusEl.className = 'status';
+  healing = true;
   try {
     await fetch(`${STT_SERVER}/heal?restart=1`, { method: 'POST', headers: authHeaders() });
   } catch {
     // сервер мог не успеть ответить — всё равно ждём восстановления
   }
-  await waitForServer(150000);
+  await waitForServer(60000);
+  healing = false;
   healBtn.disabled = false;
   healBtn.textContent = '🔧 Восстановить сервер';
 });

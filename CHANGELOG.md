@@ -33,7 +33,11 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   Manual trigger: **`/voice heal`** (aliases `fix`, `restart`).
 - **"Restore server" button in the extension popup:** calls `POST /heal?restart=1` (resets a stuck
   recording, purges stale audio, restarts the server process) and then waits for `/health`.
-  `/heal` is rate-limited and token-protected like the other endpoints. Extension `1.0.16`.
+  `/heal` is rate-limited and token-protected like the other endpoints. Extension `1.0.17`.
+- **Fast server restart:** on `?restart=1` the server spawns a detached replacement (which waits for
+  the port to free) instead of relying on the plugin watchdog — recovery takes ~3–5 s instead of up
+  to 120 s. The plugin's `heal()` also calls its server launcher right away, and the popup keeps a
+  neutral "waiting" state while polling (no red flash on transient failures).
 - **Push-to-talk hotkey in the web UI:** hold the combo on the OpenCode page to record while you hold
   the keys and transcribe on release. Default **`Alt+Z`**, selectable in the popup (`Alt+Z`,
   `Ctrl+Shift+Z`, `Alt+Q`, `F9`). Also stops on releasing the modifier first (Windows/Chrome can route

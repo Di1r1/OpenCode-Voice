@@ -14,6 +14,7 @@
 import { existsSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { ensureSttServer } from "./server-launcher.ts"
 
 export interface HealOptions {
   /** Каталог проекта OpenCode (для поиска doctor.sh). */
@@ -86,6 +87,8 @@ export async function heal($: any, opts: HealOptions): Promise<HealResult> {
     try {
       await $`bash ${script} --fix`.quiet()
       lastHealAt = now
+      // doctor мог остановить сервер — поднимаем сразу, не дожидаясь watchdog.
+      try { await ensureSttServer(opts.directory, opts.log) } catch {}
       await opts.log?.("heal: doctor --fix done", { script, reason: opts.reason })
       return { healed: true, script }
     } catch (e: any) {
@@ -95,10 +98,11 @@ export async function heal($: any, opts: HealOptions): Promise<HealResult> {
     }
   }
 
-  // Фолбэк без doctor.sh: сервер убьём (watchdog поднимет), аудиоканал пересоздадим.
+  // Фолбэк без doctor.sh: сервер убьём и сразу поднимем, аудиоканал пересоздадим.
   try { await $`pkill -f stt_server.py`.quiet() } catch {}
+  try { await ensureSttServer(opts.directory, opts.log) } catch {}
   try {
-    const rec = await import("./recorder")
+    const rec = await import("./recorder.ts")
     await rec.recoverMic($)
   } catch {}
   lastHealAt = now
