@@ -66,6 +66,27 @@ VAD_FILTER = os.getenv("WHISPER_VAD", "1").lower() not in ("0", "false", "no", "
 # Отладка: если задан каталог — сохранять туда каждый записанный/принятый WAV.
 KEEP_AUDIO_DIR = os.getenv("OPENCODE_VOICE_KEEP_AUDIO", "")
 
+# Бэкенд распознавания: "whispercpp" (GPU через whisper.cpp CLI) или
+# "faster-whisper" (CPU). Пусто = авто: whispercpp, если найден бинарник и модель.
+STT_BACKEND = os.getenv("OPENCODE_VOICE_STT_BACKEND", "").lower()
+WHISPER_CPP_BIN = os.getenv(
+    "WHISPER_CPP_BIN",
+    os.path.expanduser("~/.local/share/opencode-voice/whisper/bin/whisper-cli"),
+)
+WHISPER_CPP_MODEL = os.getenv(
+    "WHISPER_CPP_MODEL",
+    os.path.expanduser("~/.local/share/opencode-voice/whisper/ggml-small.bin"),
+)
+WHISPER_CPP_LIB_DIR = os.getenv(
+    "WHISPER_CPP_LIB_DIR",
+    os.path.expanduser("~/.local/share/opencode-voice/whisper/bin"),
+)
+# Дополнительные каталоги для LD_LIBRARY_PATH (CUDA-рантайм + драйвер WSL).
+WHISPER_CPP_EXTRA_LIBS = os.getenv(
+    "WHISPER_CPP_EXTRA_LIBS",
+    ":".join([os.path.expanduser("~/cuda-12.6/lib64"), "/usr/lib/wsl/lib"]),
+)
+
 # Recording state
 _rec_lock = threading.Lock()
 _rec_proc = None
@@ -112,7 +133,35 @@ def load_model(size, device, compute_type):
 # Transcription
 # ---------------------------------------------------------------------------
 
+def whispercpp_available() -> bool:
+    return os.path.exists(WHISPER_CPP_BIN) and os.path.exists(WHISPER_CPP_MODEL)
+
+
+def _transcribe_whispercpp(path: str) -> dict:
+    lang = LANGUAGE or "auto"
+    env = dict(os.environ)
+    libs = ":".join(d for d in (WHISPER_CPP_LIB_DIR, WHISPER_CPP_EXTRA_LIBS) if d)
+    if env.get("LD_LIBRARY_PATH"):
+        libs = f"{libs}:{env['LD_LIBRARY_PATH']}"
+    env["LD_LIBRARY_PATH"] = libs
+    cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", path, "-l", lang, "-nt", "-np"]
+    logger.info(f"whisper.cpp -> {' '.join(cmd)}")
+    start = time.time()
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=180)
+    if proc.returncode != 0:
+        raise RuntimeError(f"whisper.cpp failed: {(proc.stderr or '').strip()[:300]}")
+    text = proc.stdout.strip()
+    logger.info(f"Transcribed via whisper.cpp ({lang}, {time.time() - start:.1f}s): {text[:120]}")
+    return {"text": text, "language": lang, "language_probability": 1.0}
+
+
 def transcribe_file(path: str) -> dict:
+    if STT_BACKEND == "whispercpp":
+        return _transcribe_whispercpp(path)
+    return _transcribe_faster_whisper(path)
+
+
+def _transcribe_faster_whisper(path: str) -> dict:
     segments, info = model.transcribe(
         path,
         language=LANGUAGE,          # None → авто, либо ru/en из env
@@ -505,6 +554,7 @@ def record_stop():
 def health():
     return jsonify({
         "status": "ok",
+        "backend": STT_BACKEND,
         "model": MODEL_SIZE,
         "device": DEVICE,
         "recorder": _record_probe_cmd(),
@@ -558,7 +608,14 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    load_model(args.model, args.device, args.compute_type)
+    if not STT_BACKEND:
+        STT_BACKEND = "whispercpp" if whispercpp_available() else "faster-whisper"
+    if STT_BACKEND == "whispercpp":
+        MODEL_SIZE = os.path.basename(WHISPER_CPP_MODEL)
+        logger.info(f"STT backend: whisper.cpp (GPU), model={WHISPER_CPP_MODEL}")
+    else:
+        load_model(args.model, args.device, args.compute_type)
+        logger.info(f"STT backend: faster-whisper ({args.device}/{args.compute_type})")
 
     logger.info(f"Starting server on {args.host}:{args.port}")
     logger.info(f"PULSE_SERVER={os.getenv('PULSE_SERVER', '(not set)')}")

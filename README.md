@@ -60,6 +60,39 @@ OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765
 
 Route tests: `python3 test_stt_server.py --port 8765`.
 
+### Optional: GPU acceleration (NVIDIA + CUDA, WSL2)
+
+By default the server runs `faster-whisper` on CPU. With an NVIDIA GPU exposed to WSL2 you can run `whisper.cpp` with CUDA instead (tested on a GTX 950M / Maxwell, CC 5.0).
+
+1. Update the Windows NVIDIA driver to a WSL-capable branch (R470+); after a reboot `/usr/lib/wsl/lib/libcuda.so.1` should exist.
+2. Install the CUDA toolkit into your home directory (no root). Use a toolkit that still supports your GPU — CUDA 13 dropped Maxwell/Pascal, so use 12.6 for those:
+
+```bash
+sh cuda_12.6.0_560.28.03_linux.run --silent --toolkit --toolkitpath=$HOME/cuda-12.6 --no-opengl-libs --no-man-page --override
+```
+
+3. Build whisper.cpp with CUDA. Replace `<cc>` with your compute capability (`50` Maxwell, `61` Pascal, `75` Turing, `86` Ampere):
+
+```bash
+git clone https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<cc> -DCMAKE_BUILD_TYPE=Release \
+  -DWHISPER_BUILD_TESTS=OFF -DCUDAToolkit_ROOT=$HOME/cuda-12.6 \
+  -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler \
+  -DCMAKE_EXE_LINKER_FLAGS="-L$HOME/cuda-12.6/lib64 -Wl,--copy-dt-needed-entries"
+cmake --build build -j4 --target whisper-cli
+```
+
+4. Install the CLI + model where the server looks for them:
+
+```bash
+DEST=$HOME/.local/share/opencode-voice/whisper
+mkdir -p $DEST/bin
+cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
+cp models/ggml-small.bin $DEST/
+```
+
+The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` shows `"backend":"whispercpp"`). Force the CPU path with `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
+
 ### 3. OpenCode plugin
 
 ```bash
@@ -112,6 +145,9 @@ TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-tal
 | `WHISPER_INITIAL_PROMPT` | context hint for Whisper | empty (off) |
 | `WHISPER_LANG_DETECT_SEGMENTS` | segments used for auto language detection | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | language confidence threshold | `0.6` |
+| `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); empty = auto | auto |
+| `WHISPER_CPP_BIN` | whisper.cpp CLI path | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
+| `WHISPER_CPP_MODEL` | whisper.cpp ggml model path | `~/.local/share/opencode-voice/whisper/ggml-small.bin` |
 | `OPENCODE_VOICE_MAX_SECONDS` | max server-side recording length | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | path to a WAV for microphone-free testing | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | auto-recreate the WSLg audio channel on a silent source | `1` |

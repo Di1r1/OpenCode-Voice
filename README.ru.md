@@ -60,6 +60,39 @@ OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765
 
 Тесты маршрутов: `python3 test_stt_server.py --port 8765`.
 
+### Опционально: ускорение на GPU (NVIDIA + CUDA, WSL2)
+
+По умолчанию сервер считает на CPU через `faster-whisper`. Если в WSL2 проброшена NVIDIA-видеокарта, можно использовать `whisper.cpp` с CUDA (проверено на GTX 950M / Maxwell, CC 5.0).
+
+1. Обнови драйвер NVIDIA в Windows до ветки с поддержкой WSL (R470+); после перезагрузки должен появиться `/usr/lib/wsl/lib/libcuda.so.1`.
+2. Поставь CUDA Toolkit в домашний каталог (без root). Нужна версия, поддерживающая твою карту — CUDA 13 убрала Maxwell/Pascal, поэтому для них 12.6:
+
+```bash
+sh cuda_12.6.0_560.28.03_linux.run --silent --toolkit --toolkitpath=$HOME/cuda-12.6 --no-opengl-libs --no-man-page --override
+```
+
+3. Собери whisper.cpp с CUDA. Вместо `<cc>` — вычислительная способность (`50` Maxwell, `61` Pascal, `75` Turing, `86` Ampere):
+
+```bash
+git clone https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
+cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<cc> -DCMAKE_BUILD_TYPE=Release \
+  -DWHISPER_BUILD_TESTS=OFF -DCUDAToolkit_ROOT=$HOME/cuda-12.6 \
+  -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler \
+  -DCMAKE_EXE_LINKER_FLAGS="-L$HOME/cuda-12.6/lib64 -Wl,--copy-dt-needed-entries"
+cmake --build build -j4 --target whisper-cli
+```
+
+4. Положи CLI и модель туда, где сервер их ищет:
+
+```bash
+DEST=$HOME/.local/share/opencode-voice/whisper
+mkdir -p $DEST/bin
+cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
+cp models/ggml-small.bin $DEST/
+```
+
+Сервер сам обнаружит CLI и переключится на него (`curl -s localhost:8765/health` покажет `"backend":"whispercpp"`). Принудительно вернуть CPU: `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
+
 ### 3. Плагин OpenCode
 
 ```bash
@@ -112,6 +145,9 @@ TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) за
 | `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |
 | `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
 | `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
+| `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); пусто = авто | авто |
+| `WHISPER_CPP_BIN` | путь к CLI whisper.cpp | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
+| `WHISPER_CPP_MODEL` | путь к ggml-модели whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-small.bin` |
 | `OPENCODE_VOICE_MAX_SECONDS` | максимум записи на сервере | `120` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | авто-пересоздание аудиоканала WSLg при молчащем источнике | `1` |
