@@ -25,3 +25,5 @@ voice-opencode-plugin/opencode.json
 voice-opencode-plugin/tui.json
 # Local memo explaining this .gitignore (never published)
 /GITIGNORE_AUDIT.md
+# Local design plan for the TTS add-on (not implemented, never published)
+/TTS_PLAN.md
