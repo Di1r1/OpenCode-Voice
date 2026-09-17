@@ -26,6 +26,14 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   LAN/IP). Extension `1.0.11`.
 
 ### Added
+- **Auto-recovery on failure:** if `/voice` fails (silent/empty recording, transcription error, no
+  speech) the plugin runs `doctor.sh --fix` once (server restart via the watchdog, stuck recording
+  reset, WSLg audio channel recreated) and retries the recording once. Controlled by
+  `OPENCODE_VOICE_AUTO_HEAL` (default `1`) and `OPENCODE_VOICE_AUTO_HEAL_COOLDOWN` (default 90 s).
+  Manual trigger: **`/voice heal`** (aliases `fix`, `restart`).
+- **"Restore server" button in the extension popup:** calls `POST /heal?restart=1` (resets a stuck
+  recording, purges stale audio, restarts the server process) and then waits for `/health`.
+  `/heal` is rate-limited and token-protected like the other endpoints. Extension `1.0.16`.
 - **Push-to-talk hotkey in the web UI:** hold the combo on the OpenCode page to record while you hold
   the keys and transcribe on release. Default **`Alt+Z`**, selectable in the popup (`Alt+Z`,
   `Ctrl+Shift+Z`, `Alt+Q`, `F9`). Also stops on releasing the modifier first (Windows/Chrome can route

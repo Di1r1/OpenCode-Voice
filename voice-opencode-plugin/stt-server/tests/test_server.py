@@ -538,3 +538,36 @@ def test_purge_removes_stale_but_keeps_beeps(tmp_path, monkeypatch):
     assert not stale.exists()
     assert fresh.exists()
     assert beep.exists()
+
+
+# ---------------------------------------------------------------------------
+# /heal — manual recovery (reset a stuck recording, optional restart)
+# ---------------------------------------------------------------------------
+
+def test_heal_ok(client):
+    r = client.post("/heal")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["status"] == "ok"
+    assert body["recording_reset"] is False
+    assert body["restarting"] is False
+    assert body["version"] == srv.SERVER_VERSION
+
+
+def test_heal_restart_schedules_restart(client, monkeypatch):
+    called = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: called.append(True))
+    r = client.post("/heal?restart=1")
+    assert r.status_code == 200
+    assert r.get_json()["restarting"] is True
+    assert called == [True]
+
+
+def test_heal_resets_stuck_recording(client):
+    srv._rec_proc = srv._FAKE
+    srv._rec_file = "/tmp/voice-heal-test.wav"
+    r = client.post("/heal")
+    assert r.status_code == 200
+    assert r.get_json()["recording_reset"] is True
+    assert srv._rec_proc is None
+    assert srv._rec_file is None

@@ -158,7 +158,7 @@ Replace `/ABS/PATH` with the absolute path to the cloned repo (e.g. `/home/you/O
 3. Open the OpenCode web UI — the 🎤 button appears next to the input field.
 4. Optional: **hold `Alt+Z`** on the OpenCode page for push-to-talk — recording runs while you hold the keys, release to stop and transcribe (works only on the OpenCode page). The combo is configurable in the extension popup (`Alt+Z`, `Ctrl+Shift+Z`, `Alt+Q`, `F9`); press the modifier first, then the key, and release in any order (Escape cancels). **Hold `Alt+X`** does the same but sends the request immediately (bypassing the input box; append-and-send if the field already has text) — can be turned off in the popup.
 
-The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` lists `localhost`/`127.0.0.1`; add your host to `host_permissions` if it differs. Optional settings in the popup: **access token** and **sound beeps**.
+The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` lists `localhost`/`127.0.0.1`; add your host to `host_permissions` if it differs. Optional settings in the popup: **access token**, **sound beeps**, hotkey, auto-send, and a **🔧 Restore server** button (`POST /heal?restart=1` — resets a stuck recording, restarts the process; the plugin watchdog brings it back and the popup waits for `/health`).
 
 ### 5. Verify
 
@@ -227,6 +227,7 @@ The server and the `/voice` command auto-detect the CLI (`/health` then shows `"
 | `/voice lang [ru\|en\|auto]` | Show/switch the language |
 | `/voice device [auto\|gpu\|cpu]` | Show/switch local device: GPU (`whisper.cpp`) or CPU (`faster-whisper`) |
 | `/voice doctor [--fix]` | Diagnose the button/extension path and optionally auto-repair |
+| `/voice heal` | Recover: reset a stuck recording, restart the server, recreate the audio channel (`doctor.sh --fix`) |
 | `/voice help` | List all subcommands |
 
 The `backend`/`lang`/`device` choices are persisted to `~/.config/opencode-voice/state.json`, so they survive a restart (env vars still take precedence).
@@ -263,6 +264,7 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_KEEP_AUDIO` | if set, do not delete recordings (debug) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | recreate the WSLg audio channel on a silent source | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | recovery timing | `90`, `8000`, `5000` ms |
+| `OPENCODE_VOICE_AUTO_HEAL`, `OPENCODE_VOICE_AUTO_HEAL_COOLDOWN` | on a failed `/voice`, run `doctor.sh --fix` and retry the recording once (`0` disables; cooldown in seconds) | `1`, `90` |
 | `OPENCODE_VOICE_MAX_RECORD_SECONDS` | Hard cap on `/voice` recording length (seconds); it normally stops earlier — ~1.5 s after you stop speaking | `300` |
 | `OPENCODE_VOICE_RECORDER_BIN` | replace the recorder binary (tests/E2E): gets the same args as `arecord` and writes the WAV to the last argument | — |
 

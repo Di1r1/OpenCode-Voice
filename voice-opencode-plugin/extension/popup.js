@@ -123,6 +123,48 @@ openBtn.addEventListener('click', () => {
   chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id });
 });
 
+// Восстановление: /heal сбрасывает зависшую запись и перезапускает процесс
+// (плагин-вотчдог поднимает сервер заново), затем ждём /health.
+const healBtn = document.getElementById('healBtn');
+
+async function waitForServer(timeoutMs) {
+  const started = Date.now();
+  const deadline = started + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const res = await fetch(`${STT_SERVER}/health`, { headers: authHeaders() });
+      if (res.ok) {
+        const info = await res.json().catch(() => ({}));
+        statusEl.textContent = `✅ Сервер перезапущен · v${info.version || '?'} · ${info.backend || '?'}`;
+        statusEl.className = 'status ok';
+        testBtn.disabled = false;
+        return true;
+      }
+    } catch {}
+    statusEl.textContent = `⏳ Жду сервер… ${Math.round((Date.now() - started) / 1000)} с`;
+    statusEl.className = 'status';
+  }
+  statusEl.textContent = '❌ Сервер не поднялся за отведённое время — запустите doctor.sh --fix (или ./setup.sh)';
+  statusEl.className = 'status error';
+  return false;
+}
+
+healBtn.addEventListener('click', async () => {
+  healBtn.disabled = true;
+  healBtn.textContent = '🔧 Восстанавливаю…';
+  statusEl.textContent = '🔧 Перезапускаю STT-сервер…';
+  statusEl.className = 'status';
+  try {
+    await fetch(`${STT_SERVER}/heal?restart=1`, { method: 'POST', headers: authHeaders() });
+  } catch {
+    // сервер мог не успеть ответить — всё равно ждём восстановления
+  }
+  await waitForServer(150000);
+  healBtn.disabled = false;
+  healBtn.textContent = '🔧 Восстановить сервер';
+});
+
 function bufferToWav(buffer) {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;

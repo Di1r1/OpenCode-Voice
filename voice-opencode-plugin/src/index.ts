@@ -199,6 +199,24 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
+      // /voice heal|fix|restart — ручное восстановление (doctor.sh --fix)
+      if (sub === "heal" || sub === "fix" || sub === "restart") {
+        showToast("🔧 Восстанавливаю…")
+        try {
+          const { heal } = await import("./lib/heal")
+          const res = await heal($, { directory, force: true, reason: "manual", log })
+          setParts(svc(res.healed
+            ? `восстановление выполнено (${res.script ? "doctor.sh --fix" : "рестарт сервера + аудиоканал"})`
+            : `восстановление не выполнено${res.skipped ? ` (${res.skipped})` : ""}`))
+          showToast(res.healed ? "🔧 Готово" : "Восстановление не выполнено", res.healed ? "success" : "error")
+        } catch (e: any) {
+          await log("heal failed", { error: e?.message || String(e) })
+          setParts(svc(`ошибка восстановления: ${e?.message || e}`))
+          showToast(`Ошибка восстановления: ${e?.message || e}`, "error")
+        }
+        return
+      }
+
       // /voice help — список возможностей
       if (sub === "help" || sub === "-h" || sub === "--help") {
         const helpText =
@@ -208,6 +226,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           "• /voice lang [ru|en|auto]\n" +
           "• /voice device [auto|gpu|cpu]\n" +
           "• /voice doctor [--fix] — диагностика кнопки/микрофона\n" +
+          "• /voice heal — восстановить (рестарт сервера + аудиоканал)\n" +
           "• /voice <файл.wav|mp3|m4a|ogg|flac>"
         showToast(helpText)
         setParts(svc(helpText))
@@ -243,13 +262,14 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
 
       // /voice — запись до тишины (жёсткий предел: OPENCODE_VOICE_MAX_RECORD_SECONDS)
       // -> распознавание -> текст в поле ввода.
-      // При любой ошибке хук бросает исключение: иначе OpenCode отправит
+      // При сбое — авто-восстановление (doctor.sh --fix) и одна повторная попытка.
+      // При окончательной ошибке хук бросает исключение: иначе OpenCode отправит
       // заглушку ("\n") и модель получит пустой запрос.
       try {
         const rec = await import("./lib/recorder")
         const { transcribe, stripNonSpeech } = await import("./lib/stt")
-
         const { beep } = await import("./lib/beep")
+
         const recordOnce = async () => {
           await beep($, 880, 120)
           const s = await rec.startPushToTalk($)
@@ -259,39 +279,61 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           return s
         }
 
-        let session = await recordOnce()
-        if (rec.pttFileSize(session.file) < 2000) {
-          // Аудиоканал WSLg отвалился — один раз пересоздаём и пробуем снова.
-          await log("ptt no audio, recovering", { file: session.file })
-          showToast("🔄 Микрофон не отвечает — пересоздаю аудиоканал…")
-          await rec.recoverMic($)
-          session = await recordOnce()
+        const attempt = async (): Promise<string> => {
+          let session = await recordOnce()
+          if (rec.pttFileSize(session.file) < 2000) {
+            // Аудиоканал WSLg отвалился — один раз пересоздаём и пробуем снова.
+            await log("ptt no audio, recovering", { file: session.file })
+            showToast("🔄 Микрофон не отвечает — пересоздаю аудиоканал…")
+            await rec.recoverMic($)
+            session = await recordOnce()
+          }
+          if (rec.pttFileSize(session.file) < 2000) {
+            throw new Error("пустая запись (микрофон молчит)")
+          }
+
+          showToast("🧠 Распознаю речь…")
+          let raw: string
+          try {
+            raw = await transcribe({
+              backend: state.backend,
+              language: state.language,
+              device: state.device,
+              file: session.file,
+              $,
+              source: "command",
+            })
+          } catch (e: any) {
+            throw new Error(`ошибка распознавания: ${e?.message || e}`)
+          }
+          const text = stripNonSpeech(raw)
+          if (!text) throw new Error("речь не распознана (только шум)")
+          return text
         }
-        if (rec.pttFileSize(session.file) < 2000) {
-          await log("ptt no audio", { file: session.file })
-          showToast("❌ Микрофон молчит: запись пустая. Проверь аудиоканал (fix-mic.sh)", "error")
-          throw new Error("ptt: пустая запись")
+
+        let text: string | null = null
+        let lastError: Error | null = null
+        for (let i = 0; i < 2 && text === null; i++) {
+          try {
+            text = await attempt()
+          } catch (e: any) {
+            lastError = e instanceof Error ? e : new Error(String(e))
+            if (i === 0) {
+              await log("ptt attempt failed", { error: lastError.message })
+              showToast(`⚠️ ${lastError.message} — пробую восстановить…`)
+              const { heal } = await import("./lib/heal")
+              const res = await heal($, { directory, reason: lastError.message, log })
+              if (res.healed) {
+                showToast("🔧 Канал восстановлен — повторяю запись…")
+                continue
+              }
+            }
+          }
         }
-        showToast("🧠 Распознаю речь…")
-        let raw: string
-        try {
-          raw = await transcribe({
-            backend: state.backend,
-            language: state.language,
-            device: state.device,
-            file: session.file,
-            $,
-            source: "command",
-          })
-        } catch (e: any) {
-          await log("ptt transcribe failed", { error: e?.message || String(e) })
-          showToast(`❌ Ошибка распознавания: ${e?.message || e}`, "error")
-          throw new Error("ptt: ошибка распознавания")
-        }
-        const text = stripNonSpeech(raw)
-        if (!text) {
-          showToast("🤷 Речь не распознана (только шум)", "error")
-          throw new Error("ptt: речь не распознана")
+        if (text === null) {
+          await log("ptt failed", { error: lastError?.message })
+          showToast(`❌ ${lastError?.message || "не удалось распознать"}`, "error")
+          throw lastError || new Error("ptt: не удалось распознать")
         }
         await beep($, 660, 120)
         append(text)

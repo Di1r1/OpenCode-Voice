@@ -1088,6 +1088,68 @@ def record_stop():
 # Misc
 # ---------------------------------------------------------------------------
 
+_restart_timer = None
+
+
+def _restart_self():
+    """Точка выхода процесса: watchdog плагина поднимет сервер заново.
+
+    Вынесено в отдельную функцию, чтобы тесты не завершали процесс.
+    """
+    logger.warning("Restart requested — exiting so the plugin watchdog revives the server")
+
+
+def _restart_soon(delay: float = 1.5):
+    """Планирует рестарт: сначала ответ /heal, потом выход процесса."""
+    global _restart_timer
+
+    def _fire():
+        _restart_self()
+        os._exit(0)
+
+    _restart_timer = threading.Timer(delay, _fire)
+    _restart_timer.daemon = True
+    _restart_timer.start()
+
+
+@app.route("/heal", methods=["POST"])
+def heal_route():
+    """Сброс зависшей записи (+ рестарт процесса через ?restart=1)."""
+    if _rate_limited("heal"):
+        return jsonify({"error": "rate limited"}), 429
+
+    global _rec_proc, _rec_file
+    reset = False
+    with _rec_lock:
+        if _rec_proc is not None:
+            proc = _rec_proc
+            _rec_proc = None
+            _rec_file = None
+            _cancel_watchdog()
+            try:
+                if proc is not _FAKE:
+                    _kill_recorder(proc)
+            except Exception:
+                pass
+            reset = True
+
+    try:
+        _purge_old_files()
+    except Exception:
+        pass
+
+    restart = str(request.args.get("restart", "")).lower() in ("1", "true", "yes", "on")
+    if restart:
+        _restart_soon()
+    _log_request("heal", f"reset={reset} restart={restart}")
+    return jsonify({
+        "status": "ok",
+        "recording_reset": reset,
+        "restarting": restart,
+        "version": SERVER_VERSION,
+    })
+
+
 @app.route("/health", methods=["GET"])
 def health():
     # Бэкенд может быть ещё не разрешён (если main() не выполнялся) — считаем его здесь.
