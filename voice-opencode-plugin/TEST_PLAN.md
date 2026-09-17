@@ -12,7 +12,7 @@ npm run typecheck                 # tsc --noEmit
 bash sync-plugin.sh --check       # entry-точки актуальны
 python3 -m py_compile stt-server/stt_server.py
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest                 # 30 герметичных тестов (сервер)
+python3 -m pytest                 # 37 герметичных тестов (сервер)
 npm test                          # 12 TS-тестов stripNonSpeech (node:test)
 ```
 

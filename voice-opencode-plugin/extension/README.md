@@ -123,7 +123,16 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f S16_LE -r 16000 -c 1
 
 ## Логи
 
-- Content script: `F12` → Console → фильтр `[OpenCode Voice]` (там же версия расширения и версия сервера, 1.0.8).
+- Content script: `F12` → Console → фильтр `[OpenCode Voice]` (там же версия расширения и версия сервера, 1.0.9).
+
+## Защита от перегрузки
+
+Сервер ограничивает нагрузку, и расширение показывает понятные ошибки:
+`413` — файл больше `OPENCODE_VOICE_MAX_UPLOAD_MB` (по умолчанию 25 МБ; клиент проверяет размер до отправки),
+`400` — аудио длиннее `_MAX_AUDIO_SECONDS`,
+`429` — занят (идёт другая транскрибация) или превышен `_RATE_LIMIT` (60/мин) — «попробуй через пару секунд»,
+`504` — распознавание дольше `_TRANSCRIBE_TIMEOUT`,
+`403` — origin не разрешён (перезагрузи расширение).
 - Сервер: `/tmp/opencode/stt_server.log` (старт и каждое распознавание).
 - Запросы кнопки: `/tmp/opencode/voice-requests.log`.
 - Распознанный текст: `/tmp/opencode/voice-recognized.log` (с `source=button`).

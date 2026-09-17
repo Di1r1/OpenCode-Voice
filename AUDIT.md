@@ -12,7 +12,7 @@
 - ✅ Bind только `127.0.0.1` по умолчанию (`OPENCODE_VOICE_HOST` / `--host`). Проверено: `ss -ltn` → `127.0.0.1:8765`; доступ из Windows (PowerShell → `200`) сохранён. — `stt_server.py`, коммит `a46b6b8`
 - ✅ CORS только для локальных origin (`127.0.0.1`, `localhost`, RFC1918, `chrome-extension://`); чужой origin заголовок не получает. — `stt_server.py`
 - ✅ Опциональный токен `OPENCODE_VOICE_TOKEN` (заголовок `X-Voice-Token` / `Authorization: Bearer`; `/health` исключён). Сервер: `before_request`; расширение: поле токена в popup + заголовки во всех запросах. Пустой токен = поведение как раньше. Тесты: 401/200/health-exempt. — `stt_server.py`, `extension/*`
-- ⬜ Лимит размера загрузки/таймауты и простейший rate-limit на `/transcribe`, `/beep`, `/record/*`.
+- ✅ Защита от перегрузки: `MAX_CONTENT_LENGTH` (`413`), лимит длительности (`400`), семафор на транскрибацию (`429`), таймаут с `504`, token-bucket rate-limit на `/transcribe`/`/record/*`/`/beep`, серверная проверка `Origin` для POST (`403`), периодическая чистка RAM-каталога. Env: `OPENCODE_VOICE_MAX_UPLOAD_MB` (25), `_MAX_AUDIO_SECONDS` (300), `_MAX_CONCURRENT` (1), `_TRANSCRIBE_TIMEOUT` (300), `_RATE_LIMIT` (60/мин), `_PURGE_INTERVAL` (600). Расширение: предпроверка размера и понятные ошибки (`413/429/504/403`). Тесты: +7 (итого 37). — `stt_server.py`, `extension/content.js`
 
 ### 2. Ленивый импорт `faster-whisper`
 - ✅ `from faster_whisper import WhisperModel` убран с верхнего уровня: сервер стартует в режиме whisper.cpp/GPU без пакета; `load_model()` даёт понятную ошибку; откат GPU→CPU не скрывает исходную ошибку. Проверено эмуляцией отсутствия пакета. — `stt_server.py`, коммит `a46b6b8`
@@ -23,7 +23,7 @@
 
 ### 4. CI и автотесты
 - ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `npm test` → `sync-plugin.sh --check` → `py_compile` → `pytest`.
-- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, **30 шт.**): `/health` (backend/python/auth), CORS (allow/deny + `X-Voice-Source`), токен (off/401/200/health-exempt), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`, `_runtime_checks`/`_cuda_driver_version`, порог тишины (`_wav_levels`/`_is_silent`), анти-галлюцинационные флаги, `_wav_duration`, тег `source=` в логе распознавания и экранирование текста. Микрофон и модель не нужны.
+- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, **37 шт.**): `/health` (backend/python/auth), CORS (allow/deny + `X-Voice-Source`), токен (off/401/200/health-exempt), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`, `_runtime_checks`/`_cuda_driver_version`, порог тишины (`_wav_levels`/`_is_silent`), анти-галлюцинационные флаги, `_wav_duration`, тег `source=` в логе распознавания и экранирование текста. Микрофон и модель не нужны.
 - ✅ Побочный фикс: `/health` теперь отдаёт эффективный `backend` и при запуске не через `main()`.
 - ✅ Порог тишины + анти-галлюцинации: на тишине/шуме Whisper не запускается (`OPENCODE_VOICE_SILENCE_PEAK/_RMS`); whisper.cpp работает с `-mc 0 -sns`. Плагин и сервер. — коммит `90ca852`
 - ✅ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python): Python — в `test_server.py`, TS — `test/strip-nonspeech.test.mjs` (12 кейсов, `npm test`, шаг в CI). Логика TS вынесена в `src/lib/text.ts` без зависимостей.
@@ -68,7 +68,7 @@
 - `tsc --noEmit` — OK
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
-- `python3 -m pytest` (**30 тестов**, герметично) — OK
+- `python3 -m pytest` (**37 тестов**, герметично) — OK
 - `npm test` (**12 тестов** `stripNonSpeech`) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK

@@ -4,6 +4,7 @@
 // STT сервер слушает 0.0.0.0:8765 → доступен по тому же хосту, что и веб-UI
 // (важно при доступе через WSL2 IP, а не localhost).
 const STT_PORT = 8765;
+const MAX_UPLOAD_MB = 25;
 const STT_SERVER = `${location.protocol}//${location.hostname}:${STT_PORT}`;
 const LOG_PREFIX = '[OpenCode Voice]';
 
@@ -270,13 +271,25 @@ function stopBrowserCapture(session) {
   });
 }
 
+// Понятные сообщения на защитные ответы сервера (лимиты/таймауты).
+function friendlyError(status, fallback) {
+  if (status === 413) return `Запись слишком большая (лимит ${MAX_UPLOAD_MB} МБ)`;
+  if (status === 429) return 'Сервер занят — попробуй ещё раз через пару секунд';
+  if (status === 504) return 'Распознавание заняло слишком долго';
+  if (status === 403) return 'Запрос отклонён (origin) — перезагрузи расширение';
+  return fallback;
+}
+
 async function transcribeBlob(blob) {
+  if (blob.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    throw new Error(`Запись слишком большая (лимит ${MAX_UPLOAD_MB} МБ)`);
+  }
   const fd = new FormData();
   fd.append('audio', blob, 'recording.webm');
   await tokenReady;
   const res = await fetch(`${STT_SERVER}/transcribe`, { method: 'POST', body: fd, headers: authHeaders() });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(friendlyError(res.status, data.error || `HTTP ${res.status}`));
   return (data.text || '').trim();
 }
 
@@ -284,7 +297,7 @@ async function stopServerCapture() {
   await tokenReady;
   const res = await fetch(`${STT_SERVER}/record/stop`, { method: 'POST', headers: authHeaders() });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(friendlyError(res.status, data.error || `HTTP ${res.status}`));
   return (data.text || '').trim();
 }
 
@@ -463,7 +476,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.8 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.9 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

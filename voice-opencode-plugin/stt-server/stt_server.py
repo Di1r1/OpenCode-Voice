@@ -65,15 +65,20 @@ def _auth_token() -> str:
 @app.before_request
 def _check_token():
     token = _auth_token()
-    if not token or request.method == "OPTIONS" or request.path == "/health":
-        return None
-    got = request.headers.get("X-Voice-Token", "")
-    if not got:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            got = auth[7:]
-    if got != token:
-        return jsonify({"status": "error", "error": "unauthorized: bad or missing token"}), 401
+    if token and request.method != "OPTIONS" and request.path != "/health":
+        got = request.headers.get("X-Voice-Token", "")
+        if not got:
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                got = auth[7:]
+        if got != token:
+            return jsonify({"status": "error", "error": "unauthorized: bad or missing token"}), 401
+    # Origin-проверка для изменяющих запросов: кросс-сайтовые «простые» POST
+    # (без preflight) отсекаем здесь, а не только политикой CORS в браузере.
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("Origin", "")
+        if origin and not _ALLOWED_ORIGIN.match(origin):
+            return jsonify({"status": "error", "error": "forbidden origin"}), 403
     return None
 
 
@@ -87,6 +92,116 @@ try:
     RETAIN_SECONDS = float(os.getenv("OPENCODE_VOICE_RETAIN_SECONDS", "300"))
 except ValueError:
     RETAIN_SECONDS = 300.0
+
+# ---------------------------------------------------------------------------
+# Защита от перегрузки (P0): лимит размера загрузки, длительности, параллельности,
+# rate-limit и периодическая чистка RAM-каталога.
+# ---------------------------------------------------------------------------
+MAX_UPLOAD_MB = int(os.getenv("OPENCODE_VOICE_MAX_UPLOAD_MB", "25"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+MAX_AUDIO_SECONDS = int(os.getenv("OPENCODE_VOICE_MAX_AUDIO_SECONDS", "300"))
+MAX_CONCURRENT = max(1, int(os.getenv("OPENCODE_VOICE_MAX_CONCURRENT", "1")))
+RATE_LIMIT_PER_MIN = int(os.getenv("OPENCODE_VOICE_RATE_LIMIT", "60"))
+try:
+    TRANSCRIBE_TIMEOUT = float(os.getenv("OPENCODE_VOICE_TRANSCRIBE_TIMEOUT", "300"))
+except ValueError:
+    TRANSCRIBE_TIMEOUT = 300.0
+try:
+    PURGE_INTERVAL = float(os.getenv("OPENCODE_VOICE_PURGE_INTERVAL", "600"))
+except ValueError:
+    PURGE_INTERVAL = 600.0
+
+_transcribe_sem = threading.Semaphore(MAX_CONCURRENT)
+_rate_lock = threading.Lock()
+_rate_buckets: dict = {}
+
+
+def _rate_limited(kind: str) -> bool:
+    """Простой token bucket на IP+эндпоинт (RATE_LIMIT_PER_MIN запросов в минуту)."""
+    if RATE_LIMIT_PER_MIN <= 0:
+        return False
+    key = f"{request.remote_addr or '?'}:{kind}"
+    now = time.time()
+    with _rate_lock:
+        tokens, last = _rate_buckets.get(key, (float(RATE_LIMIT_PER_MIN), now))
+        tokens = min(float(RATE_LIMIT_PER_MIN), tokens + (now - last) * (RATE_LIMIT_PER_MIN / 60.0))
+        if tokens < 1.0:
+            _rate_buckets[key] = (tokens, now)
+            return True
+        _rate_buckets[key] = (tokens - 1.0, now)
+        return False
+
+
+def _too_many():
+    resp = jsonify({"status": "error", "error": "too many requests, slow down"})
+    resp.status_code = 429
+    resp.headers["Retry-After"] = "2"
+    return resp
+
+
+@app.errorhandler(413)
+def _too_large(_e):
+    return jsonify({
+        "status": "error",
+        "error": f"audio file too large (max {MAX_UPLOAD_MB} MB)",
+    }), 413
+
+
+def _audio_duration(path: str):
+    """Длительность аудио в секундах (WAV — напрямую, иначе ffprobe). None если неизвестно."""
+    dur = _wav_duration(path)
+    if dur > 0:
+        return dur
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", path],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return float(out.stdout.strip())
+    except Exception:
+        pass
+    return None
+
+
+def _transcribe_guarded(path: str):
+    """Транскрибация под семафором и с таймаутом.
+
+    Возвращает (result, None) либо (None, (json_body, status_code)).
+    Семафор держится до фактического завершения воркера (не пile-up при таймауте).
+    """
+    if not _transcribe_sem.acquire(blocking=False):
+        return None, ({"status": "error", "error": "server busy: another transcription is running"}, 429)
+    box: dict = {"result": None, "error": None}
+    done = threading.Event()
+
+    def worker():
+        try:
+            box["result"] = transcribe_file(path)
+        except Exception as e:  # noqa: BLE001 - пробрасываем наружу как 500
+            box["error"] = e
+        finally:
+            done.set()
+            _transcribe_sem.release()
+
+    threading.Thread(target=worker, daemon=True).start()
+    if not done.wait(TRANSCRIBE_TIMEOUT):
+        return None, ({"status": "error",
+                       "error": f"transcription timed out after {TRANSCRIBE_TIMEOUT:.0f}s"}, 504)
+    if box["error"] is not None:
+        logger.error("Transcription failed", exc_info=box["error"])
+        return None, ({"status": "error", "error": str(box["error"])}, 500)
+    return box["result"], None
+
+
+def _purge_loop():
+    """Периодически чистит RAM-каталог (таймеры удаления не переживают сбои)."""
+    interval = PURGE_INTERVAL if PURGE_INTERVAL > 0 else 600.0
+    while True:
+        time.sleep(interval)
+        _purge_old_files()
 
 # Model will be loaded in main()
 model = None
@@ -817,6 +932,8 @@ def record_status():
 @app.route("/record/stop", methods=["POST"])
 def record_stop():
     global _rec_proc, _rec_file, _rec_start
+    if _rate_limited("record"):
+        return _too_many()
     with _rec_lock:
         if _rec_proc is None:
             return jsonify({"error": "not recording"}), 409
@@ -861,12 +978,11 @@ def record_stop():
 
     source = request.headers.get("X-Voice-Source", "button")
     try:
-        result = transcribe_file(path)
+        result, err = _transcribe_guarded(path)
+        if err is not None:
+            return jsonify(err[0]), err[1]
         _log_recognized(source, result, path)
         return jsonify(result)
-    except Exception as e:
-        logger.exception("Transcription failed")
-        return jsonify({"error": str(e)}), 500
     finally:
         _schedule_delete(path)
 
@@ -907,6 +1023,8 @@ def _log_request(kind: str, extra: str = ""):
 @app.route("/beep", methods=["GET", "POST"])
 def beep_route():
     """Проиграть звуковой сигнал из WSL (тот же путь, что у /voice)."""
+    if _rate_limited("beep"):
+        return _too_many()
     try:
         freq = int(request.args.get("freq", "880"))
     except (TypeError, ValueError):
@@ -920,6 +1038,8 @@ def beep_route():
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     _log_request("transcribe")
+    if _rate_limited("transcribe"):
+        return _too_many()
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
 
@@ -937,14 +1057,19 @@ def transcribe():
         tmp_path = tmp.name
     _keep_audio(tmp_path, "upload")
 
+    duration = _audio_duration(tmp_path)
+    if duration is not None and duration > MAX_AUDIO_SECONDS:
+        _schedule_delete(tmp_path)
+        return jsonify({"status": "error",
+                        "error": f"audio too long ({duration:.0f}s > {MAX_AUDIO_SECONDS}s)"}), 400
+
     source = request.headers.get("X-Voice-Source", "api")
     try:
-        result = transcribe_file(tmp_path)
+        result, err = _transcribe_guarded(tmp_path)
+        if err is not None:
+            return jsonify(err[0]), err[1]
         _log_recognized(source, result, tmp_path)
         return jsonify(result)
-    except Exception as e:
-        logger.exception("Transcription failed")
-        return jsonify({"error": str(e)}), 500
     finally:
         _schedule_delete(tmp_path)
 
@@ -1050,5 +1175,10 @@ if __name__ == "__main__":
         f"(detect segments={LANG_DETECT_SEGMENTS}, threshold={LANG_DETECT_THRESHOLD})"
     )
     logger.info(f"STT: model={MODEL_SIZE} beam={BEAM_SIZE} vad={VAD_FILTER}")
+    logger.info(
+        f"Limits: upload<={MAX_UPLOAD_MB}MB audio<={MAX_AUDIO_SECONDS}s "
+        f"concurrent={MAX_CONCURRENT} rate={RATE_LIMIT_PER_MIN}/min timeout={TRANSCRIBE_TIMEOUT:.0f}s"
+    )
     _purge_old_files()
+    threading.Thread(target=_purge_loop, daemon=True).start()
     app.run(host=args.host, port=args.port, threaded=True)

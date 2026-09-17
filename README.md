@@ -143,7 +143,7 @@ curl -s 127.0.0.1:8765/health
 # tests (no microphone/model needed)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 30 server tests
+python3 -m pytest          # 37 server tests
 npm test                   # 12 tests (stripNonSpeech)
 npm run typecheck
 bash sync-plugin.sh --check
@@ -216,6 +216,12 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_SOURCE` | PulseAudio source (microphone) for recording; pinned so the default cannot drift to a playback monitor | `RDPSource` (WSLg) |
 | `OPENCODE_VOICE_TMP_DIR` | directory for recordings (RAM by default) | `/dev/shm/opencode-voice` |
 | `OPENCODE_VOICE_RETAIN_SECONDS` | keep a recording before auto-delete, s (`0` = delete right after transcription) | `300` |
+| `OPENCODE_VOICE_MAX_UPLOAD_MB` | max size of an uploaded audio file (`413` above it) | `25` |
+| `OPENCODE_VOICE_MAX_AUDIO_SECONDS` | max audio duration accepted (`400` above it) | `300` |
+| `OPENCODE_VOICE_MAX_CONCURRENT` | transcriptions allowed at once (others get `429`) | `1` |
+| `OPENCODE_VOICE_TRANSCRIBE_TIMEOUT` | transcription timeout in seconds (`504` after it) | `300` |
+| `OPENCODE_VOICE_RATE_LIMIT` | requests per minute per IP/endpoint (`0` = off) | `60` |
+| `OPENCODE_VOICE_PURGE_INTERVAL` | how often the RAM dir is purged, s | `600` |
 | `OPENCODE_VOICE_KEEP_AUDIO` | if set, do not delete recordings (debug) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | recreate the WSLg audio channel on a silent source | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | recovery timing | `90`, `8000`, `5000` ms |

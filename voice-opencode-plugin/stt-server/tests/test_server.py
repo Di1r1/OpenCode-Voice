@@ -11,6 +11,8 @@ Run:
 import importlib.util
 import io
 import math
+import os
+import time
 import wave
 from pathlib import Path
 
@@ -50,10 +52,15 @@ def _reset_state(monkeypatch):
     monkeypatch.setattr(srv, "RETAIN_SECONDS", 0.0)
     # Never write into the real recognized-text log from tests.
     monkeypatch.setenv("OPENCODE_VOICE_RECOGNIZED_LOG", "/dev/null")
+    # Deterministic limits: fresh rate buckets and a free transcription semaphore.
+    srv._rate_buckets.clear()
+    srv._transcribe_sem = srv.threading.Semaphore(srv.MAX_CONCURRENT)
     srv._rec_proc = None
     srv._rec_file = None
     srv._cancel_watchdog()
     yield
+    srv._rate_buckets.clear()
+    srv._transcribe_sem = srv.threading.Semaphore(srv.MAX_CONCURRENT)
     srv._rec_proc = None
     srv._rec_file = None
     srv._cancel_watchdog()
@@ -345,3 +352,98 @@ def test_cors_allows_voice_source_header(client):
                  "Access-Control-Request-Headers": "X-Voice-Source"},
     )
     assert "X-Voice-Source" in r.headers.get("Access-Control-Allow-Headers", "")
+
+
+# ---------------------------------------------------------------------------
+# Overload protection: upload size, audio duration, concurrency, timeout,
+# rate limiting, origin guard, periodic purge
+# ---------------------------------------------------------------------------
+
+def test_upload_too_large_is_413(client, monkeypatch):
+    monkeypatch.setitem(srv.app.config, "MAX_CONTENT_LENGTH", 1024)
+    big = make_wav(0.5).read()          # ~16 KB
+    r = client.post(
+        "/transcribe",
+        data={"audio": (io.BytesIO(big), "big.wav")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 413
+    assert "too large" in r.get_json()["error"]
+
+
+def test_audio_too_long_is_400(client, monkeypatch):
+    monkeypatch.setattr(srv, "_audio_duration", lambda path: 9999.0)
+    monkeypatch.setattr(srv, "transcribe_file", lambda path: {"text": "x"})
+    r = client.post(
+        "/transcribe",
+        data={"audio": (make_wav(0.2), "t.wav")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 400
+    assert "too long" in r.get_json()["error"]
+
+
+def test_transcribe_busy_is_429(client, monkeypatch):
+    assert srv._transcribe_sem.acquire(blocking=False)   # займём единственный слот
+    try:
+        r = client.post(
+            "/transcribe",
+            data={"audio": (make_wav(0.2), "t.wav")},
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 429
+        assert "busy" in r.get_json()["error"]
+    finally:
+        srv._transcribe_sem.release()
+
+
+def test_transcribe_timeout_is_504(client, monkeypatch):
+    monkeypatch.setattr(srv, "TRANSCRIBE_TIMEOUT", 0.05)
+
+    def slow(path):
+        time.sleep(0.4)
+        return {"text": "late"}
+
+    monkeypatch.setattr(srv, "transcribe_file", slow)
+    r = client.post(
+        "/transcribe",
+        data={"audio": (make_wav(0.2), "t.wav")},
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 504
+    assert "timed out" in r.get_json()["error"]
+    time.sleep(0.5)   # дать воркеру освободить семафор
+
+
+def test_rate_limit_is_429(client, monkeypatch):
+    monkeypatch.setattr(srv, "RATE_LIMIT_PER_MIN", 1)
+    monkeypatch.setattr(srv, "_play_beep", lambda *a, **k: None)
+    assert client.get("/beep?freq=0").status_code == 200
+    r = client.get("/beep?freq=0")
+    assert r.status_code == 429
+    assert r.headers.get("Retry-After")
+
+
+def test_foreign_origin_post_is_403(client, monkeypatch):
+    monkeypatch.setattr(srv, "_play_beep", lambda *a, **k: None)
+    r = client.post("/beep?freq=0", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    ok = client.post("/beep?freq=0", headers={"Origin": "http://127.0.0.1:4096"})
+    assert ok.status_code == 200
+
+
+def test_purge_removes_stale_but_keeps_beeps(tmp_path, monkeypatch):
+    monkeypatch.setattr(srv, "TMP_DIR", str(tmp_path))
+    monkeypatch.setattr(srv, "RETAIN_SECONDS", 60.0)
+    stale = tmp_path / "voice-old.wav"
+    fresh = tmp_path / "voice-new.wav"
+    beep = tmp_path / "beep-880-120.wav"
+    for p in (stale, fresh, beep):
+        p.write_bytes(b"x")
+    old = time.time() - 3600
+    os.utime(stale, (old, old))
+    os.utime(beep, (old, old))
+    srv._purge_old_files()
+    assert not stale.exists()
+    assert fresh.exists()
+    assert beep.exists()

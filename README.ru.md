@@ -143,7 +143,7 @@ curl -s 127.0.0.1:8765/health
 # тесты (микрофон и модель не нужны)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 30 тестов сервера
+python3 -m pytest          # 37 тестов сервера
 npm test                   # 12 тестов (stripNonSpeech)
 npm run typecheck
 bash sync-plugin.sh --check
@@ -216,6 +216,12 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_SOURCE` | источник PulseAudio (микрофон); прибит, чтобы default не уехал на monitor воспроизведения | `RDPSource` (WSLg) |
 | `OPENCODE_VOICE_TMP_DIR` | каталог записей (по умолчанию ОЗУ) | `/dev/shm/opencode-voice` |
 | `OPENCODE_VOICE_RETAIN_SECONDS` | сколько хранить запись до авто-удаления, с (`0` — сразу после распознавания) | `300` |
+| `OPENCODE_VOICE_MAX_UPLOAD_MB` | максимальный размер загружаемого файла (выше — `413`) | `25` |
+| `OPENCODE_VOICE_MAX_AUDIO_SECONDS` | максимальная длительность аудио (выше — `400`) | `300` |
+| `OPENCODE_VOICE_MAX_CONCURRENT` | сколько распознаваний одновременно (остальные — `429`) | `1` |
+| `OPENCODE_VOICE_TRANSCRIBE_TIMEOUT` | таймаут распознавания, с (после — `504`) | `300` |
+| `OPENCODE_VOICE_RATE_LIMIT` | запросов в минуту на IP/эндпоинт (`0` — выключено) | `60` |
+| `OPENCODE_VOICE_PURGE_INTERVAL` | как часто чистить RAM-каталог, с | `600` |
 | `OPENCODE_VOICE_KEEP_AUDIO` | если задано — записи не удалять (отладка) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | пересоздавать аудиоканал WSLg при молчащем источнике | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | тайминги восстановления | `90`, `8000`, `5000` мс |
