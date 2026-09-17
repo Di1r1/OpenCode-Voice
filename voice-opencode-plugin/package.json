@@ -10,11 +10,9 @@
   "type": "module",
   "files": [
     "src",
-    "shared",
     "stt-server/*.py",
+    "shared/stt-spec.json",
     "stt-server/requirements.txt",
-    "stt-server/requirements-dev.txt",
-    "stt-server/tests/*.py",
     "extension/manifest.json",
     "extension/content.css",
     "extension/content.js",

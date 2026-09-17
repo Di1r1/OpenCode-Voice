@@ -151,8 +151,6 @@ npm install @di1r1/opencode-voice
 
 Замените `/ABS/PATH` на абсолютный путь к клону (например `/home/you/OpenCode-Voice`). Затем **перезапустите OpenCode** — конфиг и плагины читаются один раз при старте.
 
-В репозитории есть `voice-opencode-plugin/opencode.json` — проектная привязка для локального запуска (удобно для разработки).
-
 ### 4. Расширение Chrome (кнопка 🎤)
 
 1. Откройте `chrome://extensions` и включите **Режим разработчика**.
@@ -356,8 +354,6 @@ voice-opencode-plugin/
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg
 ├── setup.sh                 # установка одной командой (зависимости, опциональная GPU-сборка, подсказки)
 ├── sync-plugin.sh           # генерация локальных entry-точек (--check для CI)
-├── opencode.json            # проектная привязка плагина (для разработки)
-├── tui.json                 # проектная привязка TUI-плагина (пример)
 ├── pytest.ini               # герметичные тесты сервера
 ├── shared/                  # единый источник истины для TS+Python (stt-spec.json, strip-cases.json)
 └── .opencode/               # plugins/index.ts генерируется; tui/web/commands версионируются

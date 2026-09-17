@@ -20,3 +20,8 @@ voice-opencode-plugin/extension/README.md
 voice-opencode-plugin/extension/icon.svg
 voice-opencode-plugin/AGENTS.md
 voice-opencode-plugin/SKILLS_GUIDE.md
+# Project-local wiring samples (users configure the global ~/.config/opencode/*)
+voice-opencode-plugin/opencode.json
+voice-opencode-plugin/tui.json
+# Local memo explaining this .gitignore (never published)
+/GITIGNORE_AUDIT.md

@@ -151,8 +151,6 @@ Then point OpenCode at the generated entry point. The plugin and the TUI hotkey 
 
 Replace `/ABS/PATH` with the absolute path to the cloned repo (e.g. `/home/you/OpenCode-Voice`). Then restart OpenCode — config and plugins are loaded once at startup.
 
-The bundled `voice-opencode-plugin/opencode.json` already wires the plugin for a project-local run (useful for development).
-
 ### 4. Chrome extension (🎤 button)
 
 1. Open `chrome://extensions` and enable **Developer mode**.
@@ -356,8 +354,6 @@ voice-opencode-plugin/
 ├── fix-mic.sh               # recreate the WSLg audio channel
 ├── setup.sh                 # one-command install (deps, optional GPU build, config hints)
 ├── sync-plugin.sh           # generate the local plugin/TUI entry points (--check for CI)
-├── opencode.json            # project-local plugin wiring (for development)
-├── tui.json                 # project-local TUI plugin wiring (sample)
 ├── pytest.ini               # hermetic server tests
 ├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json)
 └── .opencode/               # plugins/index.ts is generated; tui/web/commands are versioned
