@@ -1,6 +1,6 @@
 {
   "name": "@di1r1/opencode-voice",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Voice control for OpenCode: speak, and your words are typed into the prompt",
   "module": "src/index.ts",
   "type": "module",

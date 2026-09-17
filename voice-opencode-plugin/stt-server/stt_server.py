@@ -208,7 +208,7 @@ model = None
 MODEL_SIZE = "medium"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.1"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
 FT_MODEL = "medium"

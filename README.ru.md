@@ -4,6 +4,8 @@
 
 [English](README.md) | **Русский**
 
+История версий: [CHANGELOG.md](CHANGELOG.md).
+
 ## Компоненты
 
 | Часть | Что делает |
@@ -338,7 +340,7 @@ voice-opencode-plugin/
 └── .opencode/               # генерируется sync-plugin.sh (в .gitignore; .opencode/skills/ версионируется)
 ```
 
-В корне репозитория также `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `LICENSE` и CI в `.github/workflows/ci.yml`.
+В корне репозитория также `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/ci.yml`.
 
 ## Разработка
 
