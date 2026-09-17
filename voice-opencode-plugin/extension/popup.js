@@ -1,7 +1,9 @@
 // OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
 // OpenCode Voice - Popup Script
 
-const STT_SERVER = 'http://127.0.0.1:8765';
+// Хост сервера: по умолчанию 127.0.0.1, но content.js запоминает хост страницы
+// (актуально при доступе к OpenCode по LAN/IP) — читаем его ниже.
+let STT_SERVER = 'http://127.0.0.1:8765';
 const statusEl = document.getElementById('status');
 const testBtn = document.getElementById('testBtn');
 const openBtn = document.getElementById('openBtn');
@@ -9,8 +11,13 @@ const beepsEl = document.getElementById('beeps');
 const beepTestBtn = document.getElementById('beepTestBtn');
 const tokenEl = document.getElementById('token');
 
-// Токен доступа (если на сервере задан OPENCODE_VOICE_TOKEN)
-chrome.storage.local.get({ token: '' }, (v) => { tokenEl.value = v.token || ''; });
+// Токен доступа (если на сервере задан OPENCODE_VOICE_TOKEN) и хост сервера.
+chrome.storage.local.get({ token: '', sttHost: '' }, (v) => {
+  tokenEl.value = v.token || '';
+  const host = String(v.sttHost || '').replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+  if (host) STT_SERVER = `http://${host}:8765`;
+  checkServer();
+});
 tokenEl.addEventListener('change', () => {
   chrome.storage.local.set({ token: tokenEl.value.trim() });
   checkServer();
@@ -152,7 +159,5 @@ function writeString(view, offset, str) {
   }
 }
 
-// Initial check
-checkServer();
-// Recheck every 10 seconds
+// Recheck every 10 seconds (первая проверка — после загрузки настроек, см. выше)
 setInterval(checkServer, 10000);

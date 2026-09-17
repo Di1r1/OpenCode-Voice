@@ -17,6 +17,7 @@
 
 import { spawn } from "node:child_process"
 import { closeSync, mkdirSync, openSync, readSync, statSync } from "node:fs"
+import { silenceRms } from "./whisper.ts"
 
 export interface PttOptions {
   sampleRate?: number
@@ -149,8 +150,8 @@ function isAlive(pid: number): boolean {
   }
 }
 
-// Порог тишины (RMS) для авто-стопа; должен совпадать с OPENCODE_VOICE_SILENCE_RMS.
-const SILENCE_RMS = Number(process.env.OPENCODE_VOICE_SILENCE_RMS || 80)
+// Порог тишины (RMS) для авто-стопа: единый источник — shared/stt-spec.json (+ env).
+const SILENCE_RMS = silenceRms()
 
 /** Длительность и RMS последних ~0.4 c WAV (PCM16). */
 function wavTail(file: string): { durMs: number; rms: number } | null {

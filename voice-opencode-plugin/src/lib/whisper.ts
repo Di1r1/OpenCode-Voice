@@ -22,24 +22,35 @@ export type Env = Record<string, string | undefined>
 const FALLBACK_SPEC = {
   whisperCppExtraFlags: ["-mc", "0", "-sns"],
   defaultModelByDevice: { gpu: "medium", cpu: "small" },
+  silenceRms: 80,
 }
 
-function loadSpec(): { flags: string[]; gpu: string; cpu: string } {
+interface Spec {
+  flags: string[]
+  gpu: string
+  cpu: string
+  silenceRms: number
+}
+
+function loadSpec(): Spec {
   try {
     const url = new URL("../../shared/stt-spec.json", import.meta.url)
     const raw = JSON.parse(readFileSync(fileURLToPath(url), "utf8"))
+    const rms = Number(raw?.silence?.rms)
     return {
       flags: Array.isArray(raw?.whisperCppExtraFlags) && raw.whisperCppExtraFlags.length
         ? raw.whisperCppExtraFlags.map(String)
         : FALLBACK_SPEC.whisperCppExtraFlags,
       gpu: raw?.defaultModelByDevice?.gpu || FALLBACK_SPEC.defaultModelByDevice.gpu,
       cpu: raw?.defaultModelByDevice?.cpu || FALLBACK_SPEC.defaultModelByDevice.cpu,
+      silenceRms: Number.isFinite(rms) && rms > 0 ? rms : FALLBACK_SPEC.silenceRms,
     }
   } catch {
     return {
       flags: FALLBACK_SPEC.whisperCppExtraFlags,
       gpu: FALLBACK_SPEC.defaultModelByDevice.gpu,
       cpu: FALLBACK_SPEC.defaultModelByDevice.cpu,
+      silenceRms: FALLBACK_SPEC.silenceRms,
     }
   }
 }
@@ -51,6 +62,12 @@ export const WHISPER_CPP_EXTRA_FLAGS: string[] = SPEC.flags
 /** Размер модели по умолчанию для GPU/CPU, из shared/stt-spec.json. */
 export const GPU_MODEL_SIZE = SPEC.gpu
 export const CPU_MODEL_SIZE = SPEC.cpu
+
+/** Порог тишины RMS: env OPENCODE_VOICE_SILENCE_RMS важнее значения из спека. */
+export function silenceRms(env: Env = process.env): number {
+  const n = Number(env.OPENCODE_VOICE_SILENCE_RMS)
+  return Number.isFinite(n) && n > 0 ? n : SPEC.silenceRms
+}
 
 export function whisperHome(env: Env = process.env, home: string = os.homedir()): string {
   return env.OPENCODE_VOICE_HOME || path.join(home, ".local/share/opencode-voice")

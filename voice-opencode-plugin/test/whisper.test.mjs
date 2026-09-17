@@ -9,6 +9,7 @@ import {
   defaultModelSize,
   hasCuda,
   ldLibraryPath,
+  silenceRms,
   whisperBin,
   whisperDir,
   whisperHome,
@@ -88,4 +89,13 @@ test("ld library path starts with the bin dir and includes cuda dirs", () => {
   const ld = ldLibraryPath({}, home)
   assert.ok(ld.startsWith(path.join(home, ".local/share/opencode-voice/whisper/bin")), ld)
   assert.ok(ld.includes(lib64), ld)
+})
+
+test("silenceRms comes from the shared spec and env wins", () => {
+  // shared/stt-spec.json silence.rms = 80
+  assert.equal(silenceRms({}), 80)
+  assert.equal(silenceRms({ OPENCODE_VOICE_SILENCE_RMS: "120" }), 120)
+  // мусор/ноль игнорируются -> значение из спека
+  assert.equal(silenceRms({ OPENCODE_VOICE_SILENCE_RMS: "abc" }), 80)
+  assert.equal(silenceRms({ OPENCODE_VOICE_SILENCE_RMS: "0" }), 80)
 })

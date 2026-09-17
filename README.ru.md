@@ -275,7 +275,7 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_SERVER_SCRIPT` | путь к `stt_server.py` (нестандартная раскладка) | авто |
 | `OPENCODE_VOICE_SERVER_LOG` | файл лога сервера | `/tmp/opencode/stt_server.log` |
 | `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | период проверки/перезапуска, мс (`0` — выкл) | `120000` |
-| `OPENCODE_VOICE_MAX_SECONDS` | максимальная длина серверной записи, с | `120` |
+| `OPENCODE_VOICE_MAX_SECONDS` | максимальная длина серверной записи, с | `300` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | WAV вместо микрофона (тесты) | — |
 | `OPENCODE_VOICE_TOKEN` | общий секрет; если задан, все эндпоинты кроме `/health` требуют `X-Voice-Token` (или `Authorization: Bearer`) | пусто (выкл) |
 | `PULSE_SERVER` | сокет PulseAudio | `/mnt/wslg/PulseServer` в WSL2 |

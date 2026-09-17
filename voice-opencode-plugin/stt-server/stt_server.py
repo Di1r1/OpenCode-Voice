@@ -370,7 +370,7 @@ _rec_timer = None
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-MAX_SECONDS = int(os.getenv("OPENCODE_VOICE_MAX_SECONDS", "120"))
+MAX_SECONDS = int(os.getenv("OPENCODE_VOICE_MAX_SECONDS", "300"))
 # Сколько ждать реальных данных от рекордера при старте (заголовок WAV пишется
 # сразу, поэтому одного роста файла недостаточно — см. _wait_for_audio).
 START_AUDIO_TIMEOUT = float(os.getenv("OPENCODE_VOICE_START_AUDIO_TIMEOUT", "2.5"))
@@ -1103,6 +1103,9 @@ def health():
         "fake_audio": FAKE_AUDIO or None,
         "python": platform.python_version(),
         "auth": bool(_auth_token()),
+        "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
+        "max_audio_seconds": MAX_AUDIO_SECONDS,
+        "rate_limit_per_min": RATE_LIMIT_PER_MIN,
     })
 
 

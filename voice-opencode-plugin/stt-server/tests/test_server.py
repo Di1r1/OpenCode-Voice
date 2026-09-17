@@ -78,6 +78,10 @@ def test_health(client):
     assert body["backend"]
     assert body["version"] == srv.SERVER_VERSION
     assert "model" in body
+    # Limits are reported so clients can align (upload size, audio length, rate).
+    assert body["max_upload_mb"] == srv.MAX_UPLOAD_BYTES // (1024 * 1024)
+    assert body["max_audio_seconds"] == srv.MAX_AUDIO_SECONDS
+    assert body["rate_limit_per_min"] == srv.RATE_LIMIT_PER_MIN
     # Recorder depends on the host: arecord/ffmpeg/sox or None in a bare CI image.
     assert "recorder" in body
     if body["recorder"] is not None:

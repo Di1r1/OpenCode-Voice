@@ -18,6 +18,12 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   IPv6 `::1` while the STT server listens on `127.0.0.1` only, so the request died before reaching
   the server (nothing in the server log). The local case now always uses `127.0.0.1`; LAN/IP hosts
   are still taken from the page. Extension `1.0.10`.
+- **Consistency fixes.** The recorder now reads the silence threshold from `shared/stt-spec.json`
+  (`OPENCODE_VOICE_SILENCE_RMS` still wins); the server-side recording cap matches the audio limit
+  (`OPENCODE_VOICE_MAX_SECONDS` default `120` -> `300`); `/health` reports `max_upload_mb`,
+  `max_audio_seconds` and `rate_limit_per_min`, and the extension takes its upload limit from there
+  instead of a hardcoded copy; the popup uses the host remembered by the content script (works over
+  LAN/IP). Extension `1.0.11`.
 
 ### Added
 - **One-command installer `setup.sh`**: checks dependencies, installs `stt-server/requirements.txt`

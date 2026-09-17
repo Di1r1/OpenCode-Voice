@@ -5,11 +5,14 @@
 // STT сервер слушает 0.0.0.0:8765 → доступен по тому же хосту, что и веб-UI
 // (важно при доступе через WSL2 IP, а не localhost).
 const STT_PORT = 8765;
-const MAX_UPLOAD_MB = 25;
+// Перезаписывается значением max_upload_mb из /health (единый источник — сервер).
+let MAX_UPLOAD_MB = 25;
 // localhost на Windows может резолвиться в IPv6 ::1, а сервер слушает 127.0.0.1 —
 // поэтому для локального случая всегда используем 127.0.0.1 (для LAN/IP не меняем).
 const STT_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.hostname;
 const STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
+// Запоминаем хост, чтобы popup ходил на тот же сервер (важно при доступе по LAN/IP).
+try { chrome.storage.local.set({ sttHost: STT_HOST }); } catch {}
 const LOG_PREFIX = '[OpenCode Voice]';
 
 function log(...args) {
@@ -480,11 +483,14 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.10 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.11 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())
-      .then((h) => console.log(`[OpenCode Voice] server v${h.version || '?'} · ${h.backend || '?'}/${h.device || '?'} · auth=${h.auth}`))
+      .then((h) => {
+        if (Number.isFinite(h.max_upload_mb) && h.max_upload_mb > 0) MAX_UPLOAD_MB = h.max_upload_mb;
+        console.log(`[OpenCode Voice] server v${h.version || '?'} · ${h.backend || '?'}/${h.device || '?'} · auth=${h.auth} · max ${MAX_UPLOAD_MB}MB`);
+      })
       .catch(() => {});
   } catch {}
 });

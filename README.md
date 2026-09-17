@@ -275,7 +275,7 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_SERVER_SCRIPT` | path to `stt_server.py` (non-standard layouts) | auto |
 | `OPENCODE_VOICE_SERVER_LOG` | server log file | `/tmp/opencode/stt_server.log` |
 | `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | health-check/restart interval, ms (`0` = off) | `120000` |
-| `OPENCODE_VOICE_MAX_SECONDS` | max server-side recording length, s | `120` |
+| `OPENCODE_VOICE_MAX_SECONDS` | max server-side recording length, s | `300` |
 | `OPENCODE_VOICE_FAKE_AUDIO` | WAV used instead of the microphone (testing) | — |
 | `OPENCODE_VOICE_TOKEN` | shared secret; when set, every endpoint except `/health` requires `X-Voice-Token` (or `Authorization: Bearer`) | empty (off) |
 | `PULSE_SERVER` | PulseAudio socket | `/mnt/wslg/PulseServer` on WSL2 |

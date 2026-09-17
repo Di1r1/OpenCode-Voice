@@ -1,6 +1,7 @@
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 
-// TUI-часть opencode-voice: хоткей <leader>v запускает /voice (запись 30 c).
+// TUI-часть opencode-voice: хоткей <leader>v запускает /voice (запись до тишины;
+// жёсткий предел — OPENCODE_VOICE_MAX_RECORD_SECONDS, по умолчанию 300 с).
 // v1-модули target-exclusive (server или tui, но не оба сразу),
 // поэтому TUI живёт отдельным файлом с default export { id, tui }.
 // Именованных рантайм-экспортов нет. Сама запись/распознавание
