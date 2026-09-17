@@ -11,7 +11,7 @@
 ### 1. Безопасность STT-сервера
 - ✅ Bind только `127.0.0.1` по умолчанию (`OPENCODE_VOICE_HOST` / `--host`). Проверено: `ss -ltn` → `127.0.0.1:8765`; доступ из Windows (PowerShell → `200`) сохранён. — `stt_server.py`, коммит `a46b6b8`
 - ✅ CORS только для локальных origin (`127.0.0.1`, `localhost`, RFC1918, `chrome-extension://`); чужой origin заголовок не получает. — `stt_server.py`
-- ⬜ Опциональный токен `OPENCODE_VOICE_TOKEN` (проверка заголовка на сервере; передача из плагина и расширения). Пустой токен = поведение как сейчас.
+- ✅ Опциональный токен `OPENCODE_VOICE_TOKEN` (заголовок `X-Voice-Token` / `Authorization: Bearer`; `/health` исключён). Сервер: `before_request`; расширение: поле токена в popup + заголовки во всех запросах. Пустой токен = поведение как раньше. Тесты: 401/200/health-exempt. — `stt_server.py`, `extension/*`
 - ⬜ Лимит размера загрузки/таймауты и простейший rate-limit на `/transcribe`, `/beep`, `/record/*`.
 
 ### 2. Ленивый импорт `faster-whisper`
@@ -19,11 +19,11 @@
 
 ### 3. Воспроизводимая установка
 - ✅ `stt-server/requirements.txt` (flask + faster-whisper) и `requirements-dev.txt` (flask/pytest/requests для CI) — версии запинены. `package-lock.json` добавлен в git (нужен для `npm ci` в CI).
-- ⬜ Проверка минимальных версий Python/CUDA/драйвера при старте сервера (понятные сообщения).
+- ✅ Проверка версий/зависимостей при старте сервера (`_runtime_checks`, `_cuda_driver_version`): Python, наличие whisper.cpp CLI/модели, CUDA-драйвер и версия, рекордер (arecord/ffmpeg/sox), доступность `PULSE_SERVER`. Понятные `WARNING`. `/health` отдаёт `python` и `auth`. — `stt_server.py`
 
 ### 4. CI и автотесты
 - ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `sync-plugin.sh --check` → `py_compile` → `pytest`.
-- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, 11 шт.): `/health`, CORS (allow/deny), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`. Микрофон и модель не нужны.
+- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, 21 шт.): `/health`, CORS (allow/deny), токен (off/401/200/health-exempt), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`, `_runtime_checks`/`_cuda_driver_version`. Микрофон и модель не нужны.
 - ✅ Побочный фикс: `/health` теперь отдаёт эффективный `backend` и при запуске не через `main()`.
 - ⬜ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python).
 
@@ -62,7 +62,7 @@
 - `tsc --noEmit` — OK (включая `.opencode/web/voice.tsx`)
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
-- `python3 -m pytest` (11 тестов, герметично) — OK
+- `python3 -m pytest` (21 тест, герметично) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`; PowerShell → `200`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог

@@ -177,3 +177,47 @@ def test_fake_record_cycle(client, monkeypatch, tmp_path):
     assert stop.get_json()["text"] == "ok"
 
     assert client.post("/record/stop").status_code == 409
+
+
+# --- Access token (OPENCODE_VOICE_TOKEN) ---
+
+
+def test_health_reports_python_and_auth(client, monkeypatch):
+    monkeypatch.delenv("OPENCODE_VOICE_TOKEN", raising=False)
+    body = client.get("/health").get_json()
+    assert body["python"]
+    assert body["auth"] is False
+
+
+def test_token_disabled_by_default(client, monkeypatch):
+    monkeypatch.delenv("OPENCODE_VOICE_TOKEN", raising=False)
+    monkeypatch.setattr(srv, "_play_beep", lambda *a, **k: None)
+    assert client.get("/beep?freq=0").status_code == 200
+
+
+def test_token_required_when_set(client, monkeypatch):
+    monkeypatch.setenv("OPENCODE_VOICE_TOKEN", "secret")
+    monkeypatch.setattr(srv, "_play_beep", lambda *a, **k: None)
+    assert client.get("/beep?freq=0").status_code == 401
+    assert client.get("/beep?freq=0", headers={"X-Voice-Token": "wrong"}).status_code == 401
+    assert client.get("/beep?freq=0", headers={"X-Voice-Token": "secret"}).status_code == 200
+    assert client.get(
+        "/beep?freq=0", headers={"Authorization": "Bearer " + "secret"}
+    ).status_code == 200
+
+
+def test_token_exempts_health(client, monkeypatch):
+    monkeypatch.setenv("OPENCODE_VOICE_TOKEN", "secret")
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.get_json()["auth"] is True
+
+
+def test_runtime_checks_smoke(monkeypatch):
+    monkeypatch.delenv("PULSE_SERVER", raising=False)
+    srv._runtime_checks()  # must not raise
+
+
+def test_cuda_driver_version_type():
+    v = srv._cuda_driver_version()
+    assert v is None or isinstance(v, str)

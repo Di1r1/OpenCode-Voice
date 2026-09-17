@@ -181,10 +181,27 @@ try {
   });
 } catch {}
 
+// Опциональный токен доступа (если на сервере задан OPENCODE_VOICE_TOKEN).
+let voiceToken = '';
+const tokenReady = new Promise((resolve) => {
+  try {
+    chrome.storage.local.get({ token: '' }, (v) => { voiceToken = v.token || ''; resolve(); });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.token) voiceToken = changes.token.newValue || '';
+    });
+  } catch { resolve(); }
+});
+
+function authHeaders() {
+  return voiceToken ? { 'X-Voice-Token': voiceToken } : {};
+}
+
 function beep(freq = 880) {
   if (!beepsEnabled) return;
   try {
-    fetch(`${STT_SERVER}/beep?freq=${freq}`, { method: 'GET' }).catch(() => {});
+    void tokenReady.then(() =>
+      fetch(`${STT_SERVER}/beep?freq=${freq}`, { method: 'GET', headers: authHeaders() }).catch(() => {})
+    );
   } catch {}
 }
 
@@ -207,8 +224,8 @@ async function startCapture() {
   }
 
   // 2. Запись на сервере (WSL PulseAudio)
-  const startReq = () => fetch(`${STT_SERVER}/record/start`, { method: 'POST' });
-  const stopReq = () => fetch(`${STT_SERVER}/record/stop`, { method: 'POST' });
+  const startReq = async () => { await tokenReady; return fetch(`${STT_SERVER}/record/start`, { method: 'POST', headers: authHeaders() }); };
+  const stopReq = async () => { await tokenReady; return fetch(`${STT_SERVER}/record/stop`, { method: 'POST', headers: authHeaders() }); };
 
   let res;
   try {
@@ -254,14 +271,16 @@ function stopBrowserCapture(session) {
 async function transcribeBlob(blob) {
   const fd = new FormData();
   fd.append('audio', blob, 'recording.webm');
-  const res = await fetch(`${STT_SERVER}/transcribe`, { method: 'POST', body: fd });
+  await tokenReady;
+  const res = await fetch(`${STT_SERVER}/transcribe`, { method: 'POST', body: fd, headers: authHeaders() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return (data.text || '').trim();
 }
 
 async function stopServerCapture() {
-  const res = await fetch(`${STT_SERVER}/record/stop`, { method: 'POST' });
+  await tokenReady;
+  const res = await fetch(`${STT_SERVER}/record/stop`, { method: 'POST', headers: authHeaders() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return (data.text || '').trim();
@@ -276,7 +295,7 @@ let uiPhase = 'idle';       // idle | recording | processing
 // /record/start получит 409 «already recording»).
 window.addEventListener('pagehide', () => {
   if (uiPhase === 'recording' && captureSession?.mode === 'server') {
-    try { fetch(`${STT_SERVER}/record/stop`, { method: 'POST', keepalive: true }); } catch {}
+    try { fetch(`${STT_SERVER}/record/stop`, { method: 'POST', keepalive: true, headers: authHeaders() }); } catch {}
   }
 });
 
@@ -440,7 +459,9 @@ log('Content script loaded, waiting for UI...');
 
 // Диагностика: подтверждаем, что загружена именно эта версия (видно в консоли
 // страницы и в логе STT-сервера как beep freq=0).
-try {
-  console.log('[OpenCode Voice] content.js v1.0.5 loaded');
-  fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET' }).catch(() => {});
-} catch {}
+void tokenReady.then(() => {
+  try {
+    console.log('[OpenCode Voice] content.js v1.0.6 loaded');
+    fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
+  } catch {}
+});

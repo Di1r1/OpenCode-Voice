@@ -227,11 +227,12 @@ Full variable list: [Configuration](#configuration-environment-variables) below.
 | `OPENCODE_VOICE_SERVER` | auto-start the STT server on plugin load | `1` |
 | `OPENCODE_VOICE_SERVER_SCRIPT` | path to `stt_server.py` (non-standard layouts) | auto |
 | `OPENCODE_VOICE_PORT` | STT server port | `8765` |
-| `OPENCODE_VOICE_HOST` | STT server bind host; localhost-only by default. Set `0.0.0.0` only if you need LAN access (there is no auth) | `127.0.0.1` |
+| `OPENCODE_VOICE_HOST` | STT server bind host; localhost-only by default. Set `0.0.0.0` only if you need LAN access (combine with `OPENCODE_VOICE_TOKEN`) | `127.0.0.1` |
+| `OPENCODE_VOICE_TOKEN` | optional shared secret; when set, every endpoint except `/health` requires the `X-Voice-Token` header (or `Authorization: Bearer`). The extension has a token field in its popup | empty (off) |
 | `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | health-check/restart interval, `0` = off | `120000` |
 | `PULSE_SERVER` | PulseAudio socket | auto `/mnt/wslg/PulseServer` |
 
-**Security:** the STT server listens on `127.0.0.1` only and answers CORS only for local origins (OpenCode UI, the extension). It has **no authentication**: if you expose it (`--host 0.0.0.0` / `OPENCODE_VOICE_HOST=0.0.0.0`), anyone on the network can record from your microphone and read transcripts.
+**Security:** the STT server listens on `127.0.0.1` only and answers CORS only for local origins (OpenCode UI, the extension). Set `OPENCODE_VOICE_TOKEN` to require a shared secret on every request except `/health`. Without a token, if you expose the server (`--host 0.0.0.0` / `OPENCODE_VOICE_HOST=0.0.0.0`), anyone on the network can record from your microphone and read transcripts.
 
 On short phrases auto language detection is limited: if you usually speak one language, set it explicitly (`OPENCODE_VOICE_LANGUAGE=ru`) for reliability.
 

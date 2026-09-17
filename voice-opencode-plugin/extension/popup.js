@@ -6,6 +6,19 @@ const testBtn = document.getElementById('testBtn');
 const openBtn = document.getElementById('openBtn');
 const beepsEl = document.getElementById('beeps');
 const beepTestBtn = document.getElementById('beepTestBtn');
+const tokenEl = document.getElementById('token');
+
+// Токен доступа (если на сервере задан OPENCODE_VOICE_TOKEN)
+chrome.storage.local.get({ token: '' }, (v) => { tokenEl.value = v.token || ''; });
+tokenEl.addEventListener('change', () => {
+  chrome.storage.local.set({ token: tokenEl.value.trim() });
+  checkServer();
+});
+
+function authHeaders() {
+  const token = tokenEl.value.trim();
+  return token ? { 'X-Voice-Token': token } : {};
+}
 
 // Настройка «звуковые сигналы» (хранится в chrome.storage.local, читается content.js)
 chrome.storage.local.get({ beeps: true }, (v) => {
@@ -17,7 +30,7 @@ beepsEl.addEventListener('change', () => {
 
 beepTestBtn.addEventListener('click', async () => {
   try {
-    await fetch(`${STT_SERVER}/beep?freq=880`);
+    await fetch(`${STT_SERVER}/beep?freq=880`, { headers: authHeaders() });
   } catch {
     statusEl.textContent = `❌ STT сервер недоступен`;
     statusEl.className = 'status error';
@@ -26,7 +39,7 @@ beepTestBtn.addEventListener('click', async () => {
 
 async function checkServer() {
   try {
-    const res = await fetch(`${STT_SERVER}/health`, { method: 'GET' });
+    const res = await fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() });
     if (res.ok) {
       statusEl.textContent = '✅ STT сервер работает';
       statusEl.className = 'status ok';
@@ -58,6 +71,7 @@ testBtn.addEventListener('click', async () => {
     const res = await fetch(`${STT_SERVER}/transcribe`, {
       method: 'POST',
       body: formData,
+      headers: authHeaders(),
     });
 
     const result = await res.json();

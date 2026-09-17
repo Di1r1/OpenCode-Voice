@@ -12,10 +12,12 @@ Run:
 """
 
 import os
+import platform
 import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -47,8 +49,30 @@ def _cors(resp):
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Vary"] = "Origin"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Voice-Token, Authorization"
     return resp
+
+
+# Опциональный токен доступа. Если OPENCODE_VOICE_TOKEN задан, все запросы кроме
+# /health и CORS-preflight должны присылать заголовок X-Voice-Token (или Bearer).
+# Пустой токен = поведение как раньше (сервер слушает только localhost).
+def _auth_token() -> str:
+    return os.getenv("OPENCODE_VOICE_TOKEN", "")
+
+
+@app.before_request
+def _check_token():
+    token = _auth_token()
+    if not token or request.method == "OPTIONS" or request.path == "/health":
+        return None
+    got = request.headers.get("X-Voice-Token", "")
+    if not got:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            got = auth[7:]
+    if got != token:
+        return jsonify({"status": "error", "error": "unauthorized: bad or missing token"}), 401
+    return None
 
 
 # Auto-detect WSLg PulseAudio socket (needed for server-side recording)
@@ -785,6 +809,8 @@ def health():
         "recorder": _record_probe_cmd(),
         "pulse_server": os.getenv("PULSE_SERVER", ""),
         "fake_audio": FAKE_AUDIO or None,
+        "python": platform.python_version(),
+        "auth": bool(_auth_token()),
     })
 
 
@@ -841,6 +867,58 @@ def transcribe():
         _schedule_delete(tmp_path)
 
 
+def _cuda_driver_version():
+    """Версия CUDA-драйвера (cuDriverGetVersion) или None."""
+    try:
+        import ctypes
+
+        for name in ("libcuda.so.1", "libcuda.so"):
+            try:
+                lib = ctypes.CDLL(name)
+            except OSError:
+                continue
+            v = ctypes.c_int(0)
+            if lib.cuDriverGetVersion(ctypes.byref(v)) == 0:
+                return f"{v.value // 1000}.{(v.value % 1000) // 10}"
+    except Exception:
+        pass
+    return None
+
+
+def _runtime_checks():
+    """Понятные сообщения о версиях и зависимостях при старте."""
+    logger.info("Python %s", platform.python_version())
+    if sys.version_info < (3, 9):
+        logger.warning("Требуется Python 3.9+, найден %s", platform.python_version())
+
+    if STT_BACKEND == "whispercpp":
+        if not os.path.exists(WHISPER_CPP_BIN):
+            logger.warning(
+                "whisper.cpp CLI не найден: %s (соберите whisper.cpp или задайте WHISPER_CPP_BIN)",
+                WHISPER_CPP_BIN,
+            )
+        if not os.path.exists(WHISPER_CPP_MODEL):
+            logger.warning("Модель не найдена: %s (задайте WHISPER_CPP_MODEL)", WHISPER_CPP_MODEL)
+        if _cuda_available():
+            ver = _cuda_driver_version()
+            logger.info("CUDA-драйвер доступен%s", f" (версия {ver})" if ver else "")
+        else:
+            logger.warning(
+                "CUDA не найдена — whisper.cpp пойдёт на CPU (медленно). "
+                "Обновите драйвер NVIDIA (R470+) или задайте OPENCODE_VOICE_DEVICE=cpu"
+            )
+
+    rec = _record_probe_cmd()
+    if rec:
+        logger.info("Рекордер: %s", rec)
+    else:
+        logger.warning("Не найден рекордер (arecord/ffmpeg/sox) — запись с микрофона недоступна")
+
+    pulse = os.getenv("PULSE_SERVER", "")
+    if pulse.startswith("unix:") and not os.path.exists(pulse[5:]):
+        logger.warning("PULSE_SERVER=%s не существует — проверьте WSLg/PulseAudio", pulse)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -880,6 +958,8 @@ if __name__ == "__main__":
     else:
         load_model(args.model, args.device, args.compute_type)
         logger.info(f"STT backend: faster-whisper ({args.device}/{args.compute_type})")
+
+    _runtime_checks()
 
     logger.info(f"Starting server on {args.host}:{args.port}")
     logger.info(f"PULSE_SERVER={os.getenv('PULSE_SERVER', '(not set)')}")
