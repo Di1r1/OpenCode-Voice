@@ -144,8 +144,8 @@ opencode
 ## 8. Тест скилов и агентов
 
 ### Скилы (доступны через инструмент `skill` в сессии):
-- `skill({ name: "voice-stt" })` — справка по конфигурации
-- `skill({ name: "voice-debug" })` — диагностика бэкендов
+- `skill({ name: "ovi-models" })` — модели/GPU/тюнинг; `ovi-overview` — обзор продукта
+- `skill({ name: "ovi-debug" })` — диагностика/ремонт (doctor.sh, Failed to fetch, тишина)
 
 ### Агенты (доступны через `@` в TUI):
 - `@voice-builder` — агент для разработки плагина
