@@ -214,7 +214,9 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_DEVICE` | `auto` (GPU, иначе CPU) \| `gpu` \| `cpu` | `auto` |
 | `OPENAI_API_KEY` | ключ для бэкенда `api` | — |
 | `OPENCODE_VOICE_MODEL` | имя модели для `api` | `whisper-1` |
-| `WHISPER_MODEL` | модель локального faster-whisper | `medium` |
+| `WHISPER_MODEL` | размер модели локального бэкенда; по умолчанию зависит от устройства (medium на GPU, small на CPU) | авто (устройство) |
+| `OPENCODE_VOICE_HOME` | базовый каталог установки модели/CLI | `~/.local/share/opencode-voice` |
+| `OPENCODE_VOICE_WHISPER_DIR` | каталог whisper.cpp (CLI + `ggml-*.bin`) | `<home>/whisper` |
 | `OPENCODE_VOICE_SOURCE` | источник PulseAudio (микрофон); прибит, чтобы default не уехал на monitor воспроизведения | `RDPSource` (WSLg) |
 | `OPENCODE_VOICE_TMP_DIR` | каталог записей (по умолчанию ОЗУ) | `/dev/shm/opencode-voice` |
 | `OPENCODE_VOICE_RETAIN_SECONDS` | сколько хранить запись до авто-удаления, с (`0` — сразу после распознавания) | `300` |
@@ -248,10 +250,11 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 
 | Переменная | Назначение | По умолчанию |
 |----------|---------|---------|
-| `WHISPER_CPP_BIN` | путь к CLI whisper.cpp | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
-| `WHISPER_CPP_MODEL` | ggml-модель whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
-| `WHISPER_CPP_MODEL_FALLBACK` | ggml-модель для CPU, когда faster-whisper не установлен | `…/ggml-small.bin` |
-| `WHISPER_CPP_LIB_DIR`, `WHISPER_CPP_EXTRA_LIBS` | доп. пути библиотек для CLI | авто |
+| `WHISPER_CPP_BIN` | путь к CLI whisper.cpp (ищется автоматически в каталоге whisper) | `<home>/whisper/bin/whisper-cli` |
+| `WHISPER_CPP_MODEL` | ggml-модель whisper.cpp (явный путь) | `<home>/whisper/ggml-<size>.bin` |
+| `WHISPER_CPP_MODEL_SIZE` | размер модели whisper.cpp (`tiny`…`large`) | авто (medium GPU / small CPU) |
+| `WHISPER_CPP_LIB_DIR`, `WHISPER_CPP_EXTRA_LIBS` | доп. пути библиотек для CLI | авто (каталоги CUDA находятся сами) |
+| `CUDA_HOME`, `CUDA_PATH` | корень CUDA toolkit; его `lib64` добавляется в `LD_LIBRARY_PATH` автоматически | — |
 | `WHISPER_BEAM_SIZE` | beam декодера (`1` = жадный/самый быстрый) | `1` |
 | `WHISPER_VAD` | фильтр голосовой активности (`1`/`0`) | `1` |
 | `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |

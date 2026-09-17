@@ -214,7 +214,9 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_DEVICE` | `auto` (GPU, else CPU) \| `gpu` \| `cpu` | `auto` |
 | `OPENAI_API_KEY` | key for the `api` backend | — |
 | `OPENCODE_VOICE_MODEL` | model name for the `api` backend | `whisper-1` |
-| `WHISPER_MODEL` | model for the local faster-whisper backend | `medium` |
+| `WHISPER_MODEL` | model size for the local backend; default depends on the device (medium on GPU, small on CPU) | auto (device) |
+| `OPENCODE_VOICE_HOME` | base directory for the model/CLI install | `~/.local/share/opencode-voice` |
+| `OPENCODE_VOICE_WHISPER_DIR` | whisper.cpp directory (CLI + `ggml-*.bin`) | `<home>/whisper` |
 | `OPENCODE_VOICE_SOURCE` | PulseAudio source (microphone) for recording; pinned so the default cannot drift to a playback monitor | `RDPSource` (WSLg) |
 | `OPENCODE_VOICE_TMP_DIR` | directory for recordings (RAM by default) | `/dev/shm/opencode-voice` |
 | `OPENCODE_VOICE_RETAIN_SECONDS` | keep a recording before auto-delete, s (`0` = delete right after transcription) | `300` |
@@ -248,10 +250,11 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `WHISPER_CPP_BIN` | whisper.cpp CLI path | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
-| `WHISPER_CPP_MODEL` | whisper.cpp ggml model | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
-| `WHISPER_CPP_MODEL_FALLBACK` | ggml model used when faster-whisper is absent (CPU) | `…/ggml-small.bin` |
-| `WHISPER_CPP_LIB_DIR`, `WHISPER_CPP_EXTRA_LIBS` | extra library paths for the CLI | auto |
+| `WHISPER_CPP_BIN` | whisper.cpp CLI path (auto-detected in the whisper dir) | `<home>/whisper/bin/whisper-cli` |
+| `WHISPER_CPP_MODEL` | whisper.cpp ggml model (explicit path) | `<home>/whisper/ggml-<size>.bin` |
+| `WHISPER_CPP_MODEL_SIZE` | model size for whisper.cpp (`tiny`…`large`) | auto (medium GPU / small CPU) |
+| `WHISPER_CPP_LIB_DIR`, `WHISPER_CPP_EXTRA_LIBS` | extra library paths for the CLI | auto (CUDA dirs discovered) |
+| `CUDA_HOME`, `CUDA_PATH` | CUDA toolkit root; its `lib64` is added to `LD_LIBRARY_PATH` automatically | — |
 | `WHISPER_BEAM_SIZE` | decoder beam (`1` = greedy/fastest) | `1` |
 | `WHISPER_VAD` | voice-activity filter (`1`/`0`) | `1` |
 | `WHISPER_INITIAL_PROMPT` | context hint for Whisper | empty (off) |

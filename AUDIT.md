@@ -1,6 +1,6 @@
 # Аудит OpenCode Voice — путь до промышленной эксплуатации
 
-**Дата:** 2026-09-17 · **База:** коммит `9299810` · **Легенда:** ✅ сделано · 🚧 частично · ⬜ запланировано
+**Дата:** 2026-09-17 · **База:** коммит `564d886` (v0.3.1) · **Легенда:** ✅ сделано · 🚧 частично · ⬜ запланировано
 
 Документ ведём по мере работ: отмечаем статус и коммит.
 
@@ -37,8 +37,8 @@
 
 6. ✅ **Пустой запрос модели**: info-подкоманды `backend/lang/device/help` и сбой `/voice <file>` кладут в `parts` служебный текст (`svc(...)`) вместо `"\n"`; успех PTT/файла — распознанный текст; сбои PTT бросают исключение (без запроса). — `src/index.ts`
 7. ⬜ **Персист состояния**: `state.backend/language/device` живёт в памяти, общий на все сессии, сбрасывается при рестарте. Писать в `~/.config/opencode-voice/config.json` (или читать из `opencode.json`). — `src/index.ts`, `src/lib/config.ts`
-8. ⬜ **Портируемость**: захардкожены `~/cuda-12.6/lib64`, `~/.local/share/opencode-voice/whisper/*`. Авто-детекция + только env. — `src/lib/stt.ts:288`, `stt_server.py:100,286`, `_cuda_available`
-9. ⬜ **Адаптивный выбор модели**: сейчас дефолт `medium` и на CPU (медленно). Автоподбор (CPU→small, GPU→medium) или явная настройка.
+8. ✅ **Портируемость**: пути вынесены в `src/lib/whisper.ts` и зеркально в `stt_server.py`: база `OPENCODE_VOICE_HOME` (`~/.local/share/opencode-voice`), CLI/модель ищутся в `OPENCODE_VOICE_WHISPER_DIR` (`<home>/whisper`), CUDA-каталоги — glob `cuda-*` + `CUDA_HOME`/`CUDA_PATH` (версия toolkit не зашита). Тесты: TS (`test/whisper.test.mjs`) + Python (`test_server.py`).
+9. ✅ **Адаптивный выбор модели**: `WHISPER_MODEL`/`WHISPER_CPP_MODEL_SIZE` переопределяют, иначе `medium` на GPU и `small` на CPU; на CPU whisper.cpp берёт `small`, если он есть. — `src/lib/{stt,whisper}.ts`, `stt_server.py`
 10. ⬜ **Сериализация транскрибации**: Flask `threaded=True` + общий объект модели faster-whisper → возможные конфликты при параллельных запросах. Lock/очередь.
 11. ✅ **Блокирующий хук / логи**: поведение `/voice` (хук блокируется на время записи; отказы логируются как ERROR, чтобы не уходил пустой запрос; авто-стоп по тишине) задокументировано в README EN/RU и AGENTS.md. — `README.md`, `README.ru.md`
 12. 🚧 **npm-пакет**: добавлены `files`, `engines`, `repository`, `homepage`, `bugs`, `publishConfig`; имя переведено в скоуп `@di1r1/opencode-voice` (без скоупа имя занято), `package-lock` пересинхронизирован. Осталось: реальная публикация/версионирование. — `package.json`
@@ -68,8 +68,8 @@
 - `tsc --noEmit` — OK
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
-- `python3 -m pytest` (**37 тестов**, герметично) — OK
-- `npm test` (**12 тестов** `stripNonSpeech`) — OK
+- `python3 -m pytest` (**42 теста**, герметично) — OK
+- `npm test` (**21 тест**: 12 `stripNonSpeech` + 9 путей/моделей whisper.cpp) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог

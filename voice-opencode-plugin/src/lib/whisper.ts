@@ -1,0 +1,97 @@
+/**
+ * Пути к whisper.cpp и CUDA-библиотекам (портируемость).
+ *
+ * Всё настраивается через env, дефолты считаются от OPENCODE_VOICE_HOME
+ * (по умолчанию ~/.local/share/opencode-voice). Каталоги CUDA ищутся по
+ * кандидатам, включая glob `cuda-*`, поэтому версия toolkit не зашита.
+ *
+ * Env: OPENCODE_VOICE_HOME, OPENCODE_VOICE_WHISPER_DIR, WHISPER_CPP_BIN,
+ *      WHISPER_CPP_MODEL, WHISPER_CPP_MODEL_SIZE, WHISPER_MODEL,
+ *      CUDA_HOME, CUDA_PATH, OPENCODE_VOICE_CUDA.
+ */
+
+import { existsSync, readdirSync } from "node:fs"
+import os from "node:os"
+import path from "node:path"
+
+export type Env = Record<string, string | undefined>
+
+export function whisperHome(env: Env = process.env, home: string = os.homedir()): string {
+  return env.OPENCODE_VOICE_HOME || path.join(home, ".local/share/opencode-voice")
+}
+
+export function whisperDir(env: Env = process.env, home: string = os.homedir()): string {
+  return env.OPENCODE_VOICE_WHISPER_DIR || path.join(whisperHome(env, home), "whisper")
+}
+
+/** Существующие каталоги с CUDA-рантаймом/драйвером (без привязки к версии). */
+export function cudaLibDirs(env: Env = process.env, home: string = os.homedir()): string[] {
+  const out: string[] = []
+  const add = (p?: string) => {
+    if (p && existsSync(p) && !out.includes(p)) out.push(p)
+  }
+  add("/usr/lib/wsl/lib")
+  for (const base of ["/usr/local", "/opt", home, whisperDir(env, home)]) {
+    if (!existsSync(base)) continue
+    add(path.join(base, "cuda", "lib64"))
+    let entries: string[] = []
+    try {
+      entries = readdirSync(base)
+    } catch {
+      entries = []
+    }
+    for (const name of entries) {
+      if (name.startsWith("cuda-")) add(path.join(base, name, "lib64"))
+    }
+  }
+  add(env.CUDA_HOME ? path.join(env.CUDA_HOME, "lib64") : undefined)
+  add(env.CUDA_PATH ? path.join(env.CUDA_PATH, "lib64") : undefined)
+  return out
+}
+
+/** Есть ли CUDA-драйвер/рантайм (или явно выключено через OPENCODE_VOICE_CUDA=0). */
+export function hasCuda(env: Env = process.env, home: string = os.homedir()): boolean {
+  if (["0", "false", "no", "off"].includes(String(env.OPENCODE_VOICE_CUDA ?? "1").toLowerCase())) return false
+  const candidates = [
+    "/usr/lib/wsl/lib/libcuda.so.1",
+    "/usr/lib/wsl/lib/libcuda.so",
+    "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+    ...cudaLibDirs(env, home).flatMap((d) => [
+      path.join(d, "libcuda.so.1"),
+      path.join(d, "libcuda.so"),
+      path.join(d, "libcudart.so"),
+    ]),
+  ]
+  return candidates.some((p) => existsSync(p))
+}
+
+/** Путь к модели: явный WHISPER_CPP_MODEL или `<whisperDir>/ggml-<size>.bin`. */
+export function whisperModelPath(size: string, env: Env = process.env, home: string = os.homedir()): string {
+  return env.WHISPER_CPP_MODEL || path.join(whisperDir(env, home), `ggml-${size}.bin`)
+}
+
+/** Бинарь whisper.cpp: env, затем типовые места установки. */
+export function whisperBin(env: Env = process.env, home: string = os.homedir()): string | null {
+  const dir = whisperDir(env, home)
+  const candidates = [
+    env.WHISPER_CPP_BIN,
+    path.join(dir, "bin", "whisper-cli"),
+    path.join(dir, "bin", "whisper-cpp"),
+    path.join(dir, "bin", "main"),
+    path.join(dir, "build", "bin", "whisper-cli"),
+  ].filter(Boolean) as string[]
+  for (const c of candidates) if (existsSync(c)) return c
+  return null
+}
+
+/** Размер модели: явный env, иначе medium на GPU и small на CPU. */
+export function defaultModelSize(env: Env = process.env, cuda: boolean = hasCuda(env)): string {
+  return env.WHISPER_CPP_MODEL_SIZE || env.WHISPER_MODEL || (cuda ? "medium" : "small")
+}
+
+/** LD_LIBRARY_PATH: каталог бинаря + найденные CUDA-каталоги. */
+export function ldLibraryPath(env: Env = process.env, home: string = os.homedir()): string {
+  const bin = whisperBin(env, home)
+  const binDir = bin ? path.dirname(bin) : path.join(whisperDir(env, home), "bin")
+  return [binDir, ...cudaLibDirs(env, home)].join(":")
+}

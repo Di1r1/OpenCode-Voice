@@ -355,6 +355,63 @@ def test_cors_allows_voice_source_header(client):
 
 
 # ---------------------------------------------------------------------------
+# Portability: whisper.cpp paths and adaptive model size
+# ---------------------------------------------------------------------------
+
+def test_default_model_size_gpu_vs_cpu(monkeypatch):
+    monkeypatch.delenv("WHISPER_MODEL", raising=False)
+    monkeypatch.delenv("WHISPER_CPP_MODEL_SIZE", raising=False)
+    monkeypatch.setattr(srv, "_cuda_available", lambda: True)
+    assert srv._default_model_size() == "medium"
+    monkeypatch.setattr(srv, "_cuda_available", lambda: False)
+    assert srv._default_model_size() == "small"
+    monkeypatch.setenv("WHISPER_CPP_MODEL_SIZE", "large")
+    assert srv._default_model_size() == "large"
+    monkeypatch.setenv("WHISPER_MODEL", "base")
+    monkeypatch.delenv("WHISPER_CPP_MODEL_SIZE", raising=False)
+    assert srv._default_model_size() == "base"
+
+
+def test_whisper_dir_honors_env(monkeypatch):
+    monkeypatch.setenv("OPENCODE_VOICE_HOME", "/data/ovi")
+    monkeypatch.delenv("OPENCODE_VOICE_WHISPER_DIR", raising=False)
+    assert srv._whisper_dir() == "/data/ovi/whisper"
+    monkeypatch.setenv("OPENCODE_VOICE_WHISPER_DIR", "/opt/whisper")
+    assert srv._whisper_dir() == "/opt/whisper"
+
+
+def test_cuda_lib_dirs_discovers_versioned(tmp_path, monkeypatch):
+    versioned = tmp_path / "cuda-12.9" / "lib64"
+    versioned.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CUDA_HOME", str(tmp_path / "cuda-home"))
+    (tmp_path / "cuda-home" / "lib64").mkdir(parents=True)
+    dirs = srv._cuda_lib_dirs()
+    assert str(versioned) in dirs
+    assert str(tmp_path / "cuda-home" / "lib64") in dirs
+
+
+def test_cuda_available_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("OPENCODE_VOICE_CUDA", "0")
+    assert srv._cuda_available() is False
+
+
+def test_whisper_bin_and_model_resolution(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENCODE_VOICE_WHISPER_DIR", str(tmp_path))
+    monkeypatch.delenv("WHISPER_CPP_BIN", raising=False)
+    cli = tmp_path / "bin" / "whisper-cli"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("")
+    assert srv._whisper_bin() == str(cli)
+
+    monkeypatch.delenv("WHISPER_CPP_MODEL", raising=False)
+    monkeypatch.setenv("WHISPER_CPP_MODEL_SIZE", "small")
+    assert srv._whisper_model() == str(tmp_path / "ggml-small.bin")
+    monkeypatch.setenv("WHISPER_CPP_MODEL", "/m/ggml-medium.bin")
+    assert srv._whisper_model() == "/m/ggml-medium.bin"
+
+
+# ---------------------------------------------------------------------------
 # Overload protection: upload size, audio duration, concurrency, timeout,
 # rate limiting, origin guard, periodic purge
 # ---------------------------------------------------------------------------

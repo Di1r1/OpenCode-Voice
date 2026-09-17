@@ -18,6 +18,12 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   are still taken from the page. Extension `1.0.10`.
 
 ### Added
+- **Portable whisper/CUDA discovery** (`src/lib/whisper.ts`, mirrored in `stt_server.py`): no hardcoded
+  toolkit version or paths. Base dir `OPENCODE_VOICE_HOME` (default `~/.local/share/opencode-voice`),
+  CLI/model auto-detected in `OPENCODE_VOICE_WHISPER_DIR`, CUDA directories discovered via `cuda-*`
+  globs plus `CUDA_HOME`/`CUDA_PATH`.
+- **Adaptive model size:** `WHISPER_MODEL`/`WHISPER_CPP_MODEL_SIZE` override the default, which is
+  now `medium` on GPU and `small` on CPU (previously always `medium`).
 - `OPENCODE_VOICE_MAX_RECORD_SECONDS` (default `300`) — configurable hard cap for `/voice`
   recordings; recording still stops on silence (~1.5 s), the cap only bounds long monologues.
 - This `CHANGELOG.md`.

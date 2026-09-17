@@ -203,15 +203,97 @@ def _purge_loop():
         time.sleep(interval)
         _purge_old_files()
 
+# --- Портируемость: пути к whisper.cpp и CUDA находятся автоматически --------
+# Всё настраивается через env, дефолты считаются от OPENCODE_VOICE_HOME
+# (по умолчанию ~/.local/share/opencode-voice). Версия CUDA не зашита: каталоги
+# cuda-* ищутся в /usr/local, /opt, ~ и в каталоге установки whisper.
+
+def _whisper_home() -> str:
+    return os.getenv("OPENCODE_VOICE_HOME") or os.path.expanduser("~/.local/share/opencode-voice")
+
+
+def _whisper_dir() -> str:
+    return os.getenv("OPENCODE_VOICE_WHISPER_DIR") or os.path.join(_whisper_home(), "whisper")
+
+
+def _cuda_lib_dirs() -> list:
+    """Существующие каталоги с CUDA-рантаймом/драйвером (без привязки к версии)."""
+    out = []
+
+    def add(p):
+        if p and os.path.isdir(p) and p not in out:
+            out.append(p)
+
+    add("/usr/lib/wsl/lib")
+    for base in ("/usr/local", "/opt", os.path.expanduser("~"), _whisper_dir()):
+        if not os.path.isdir(base):
+            continue
+        add(os.path.join(base, "cuda", "lib64"))
+        try:
+            entries = os.listdir(base)
+        except OSError:
+            entries = []
+        for name in entries:
+            if name.startswith("cuda-"):
+                add(os.path.join(base, name, "lib64"))
+    for env_name in ("CUDA_HOME", "CUDA_PATH"):
+        value = os.getenv(env_name)
+        if value:
+            add(os.path.join(value, "lib64"))
+    return out
+
+
+def _cuda_available() -> bool:
+    """Есть ли CUDA-драйвер/рантайм (libcuda/libcudart) или CUDA явно отключена."""
+    if os.getenv("OPENCODE_VOICE_CUDA", "1").lower() in ("0", "false", "no", "off"):
+        return False
+    candidates = [
+        "/usr/lib/wsl/lib/libcuda.so.1",
+        "/usr/lib/wsl/lib/libcuda.so",
+        "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+    ]
+    for d in _cuda_lib_dirs():
+        candidates += [os.path.join(d, "libcuda.so.1"), os.path.join(d, "libcuda.so"),
+                       os.path.join(d, "libcudart.so")]
+    return any(os.path.exists(p) for p in candidates)
+
+
+def _default_model_size() -> str:
+    """Размер модели: явный env, иначе medium на GPU и small на CPU."""
+    return (os.getenv("WHISPER_CPP_MODEL_SIZE") or os.getenv("WHISPER_MODEL")
+            or ("medium" if _cuda_available() else "small"))
+
+
+def _whisper_bin() -> str:
+    """Бинарь whisper.cpp: env, затем типовые места установки."""
+    candidates = [
+        os.getenv("WHISPER_CPP_BIN"),
+        os.path.join(_whisper_dir(), "bin", "whisper-cli"),
+        os.path.join(_whisper_dir(), "bin", "whisper-cpp"),
+        os.path.join(_whisper_dir(), "bin", "main"),
+        os.path.join(_whisper_dir(), "build", "bin", "whisper-cli"),
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return os.getenv("WHISPER_CPP_BIN") or os.path.join(_whisper_dir(), "bin", "whisper-cli")
+
+
+def _whisper_model() -> str:
+    """Путь к модели: явный WHISPER_CPP_MODEL или <whisperDir>/ggml-<size>.bin."""
+    return os.getenv("WHISPER_CPP_MODEL") or os.path.join(
+        _whisper_dir(), f"ggml-{_default_model_size()}.bin")
+
+
 # Model will be loaded in main()
 model = None
-MODEL_SIZE = "medium"
+MODEL_SIZE = _default_model_size()
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 SERVER_VERSION = "0.3.1"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
-FT_MODEL = "medium"
+FT_MODEL = _default_model_size()
 FT_DEVICE = "cpu"
 FT_COMPUTE = "int8"
 
@@ -235,22 +317,14 @@ KEEP_AUDIO_DIR = os.getenv("OPENCODE_VOICE_KEEP_AUDIO", "")
 # Бэкенд распознавания: "whispercpp" (GPU через whisper.cpp CLI) или
 # "faster-whisper" (CPU). Пусто = авто: whispercpp, если найден бинарник и модель.
 STT_BACKEND = os.getenv("OPENCODE_VOICE_STT_BACKEND", "").lower()
-WHISPER_CPP_BIN = os.getenv(
-    "WHISPER_CPP_BIN",
-    os.path.expanduser("~/.local/share/opencode-voice/whisper/bin/whisper-cli"),
-)
-WHISPER_CPP_MODEL = os.getenv(
-    "WHISPER_CPP_MODEL",
-    os.path.expanduser("~/.local/share/opencode-voice/whisper/ggml-medium.bin"),
-)
-WHISPER_CPP_LIB_DIR = os.getenv(
-    "WHISPER_CPP_LIB_DIR",
-    os.path.expanduser("~/.local/share/opencode-voice/whisper/bin"),
-)
-# Дополнительные каталоги для LD_LIBRARY_PATH (CUDA-рантайм + драйвер WSL).
+WHISPER_CPP_BIN = _whisper_bin()
+WHISPER_CPP_MODEL = _whisper_model()
+WHISPER_CPP_LIB_DIR = os.getenv("WHISPER_CPP_LIB_DIR") or os.path.dirname(WHISPER_CPP_BIN)
+# Дополнительные каталоги для LD_LIBRARY_PATH (CUDA-рантайм + драйвер WSL) —
+# находятся автоматически; можно переопределить через WHISPER_CPP_EXTRA_LIBS.
 WHISPER_CPP_EXTRA_LIBS = os.getenv(
     "WHISPER_CPP_EXTRA_LIBS",
-    ":".join([os.path.expanduser("~/cuda-12.6/lib64"), "/usr/lib/wsl/lib"]),
+    ":".join(_cuda_lib_dirs()),
 )
 
 # Recording state
@@ -569,16 +643,6 @@ def transcribe_file(path: str) -> dict:
                 raise e
             return _transcribe_faster_whisper(path)
     return _transcribe_faster_whisper(path)
-
-
-def _cuda_available() -> bool:
-    """Есть ли CUDA-драйвер (WSL2 или системный)."""
-    return any(os.path.exists(p) for p in (
-        "/usr/lib/wsl/lib/libcuda.so.1",
-        "/usr/lib/wsl/lib/libcuda.so",
-        "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
-        "/usr/local/cuda/lib64/libcuda.so.1",
-    ))
 
 
 def _ensure_faster_whisper():
@@ -1133,7 +1197,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", default=os.getenv("OPENCODE_VOICE_HOST", "127.0.0.1"),
                         help="Host to bind (default 127.0.0.1; use 0.0.0.0 to expose on the network)")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
-    parser.add_argument("--model", default="medium", help="Whisper model size (tiny, base, small, medium, large)")
+    parser.add_argument("--model", default=_default_model_size(), help="Whisper model size (tiny, base, small, medium, large)")
     parser.add_argument("--device", default="cpu", help="Device (cpu, cuda)")
     parser.add_argument("--compute-type", default="int8", help="Compute type (int8, float16, float32)")
     args = parser.parse_args()
