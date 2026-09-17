@@ -1,40 +1,75 @@
 # OpenCode Voice
 
-Голосовой ввод для [OpenCode](https://opencode.ai): говоришь — текст попадает в поле ввода промпта. Поддерживает локальное распознавание (`faster-whisper`) и облачное (OpenAI Whisper API), push-to-talk в TUI и кнопку 🎤 в web UI.
+Голосовой ввод для [OpenCode](https://opencode.ai): говорите — текст попадает в поле ввода. Работает локально (`faster-whisper` на CPU, `whisper.cpp` на GPU) или в облаке (OpenAI Whisper API): push-to-talk в TUI, кнопка 🎤 в веб-интерфейсе и встроенный `doctor` для диагностики.
 
 [English](README.md) | **Русский**
 
 ## Компоненты
 
 | Часть | Что делает |
-|-------|------------|
-| `src/` | Плагин OpenCode (TS): команда `/voice`, запись push-to-talk, STT-бэкенды |
-| `stt-server/` | Flask + faster-whisper: серверная запись через PulseAudio (WSL) и распознавание |
-| `extension/` | Расширение Chrome (MV3): кнопка 🎤 в web UI, гибридная запись (браузер → сервер) |
-| `sync-plugin.sh` | Готовит локальные точки входа плагина и TUI/web |
+|------|--------------|
+| `voice-opencode-plugin/src/` | Плагин OpenCode (TypeScript): команда `/voice`, push-to-talk запись, STT-бэкенды, авто-запуск сервера |
+| `voice-opencode-plugin/stt-server/` | Flask + faster-whisper / whisper.cpp: HTTP API, серверная запись через PulseAudio, распознавание |
+| `voice-opencode-plugin/extension/` | Расширение Chrome (MV3): кнопка 🎤 в веб-интерфейсе (запись в браузере → сервер) |
+| `voice-opencode-plugin/doctor.sh` | Диагностика и ремонт пути «кнопка/расширение» (сервер, CORS, зависшая запись, микрофон) |
+| `voice-opencode-plugin/fix-mic.sh` | Пересоздаёт аудиоканал WSLg, если микрофон «умер» (WSL2) |
+| `voice-opencode-plugin/sync-plugin.sh` | Генерирует локальные entry-точки плагина/TUI, которые загружает OpenCode |
 
 ## Требования
 
-- Windows 10/11 + WSL2 с WSLg (аудио идёт через WSLg-PulseAudio).
-- Node.js + npm — для плагина.
-- Python 3.9+ — для STT-сервера.
-- Системные пакеты: `alsa-utils` (`arecord`), `libasound2-plugins`, `ffmpeg` (опционально).
+- **Linux (десктоп)** или **Windows 10/11 + WSL2 с WSLg** (в WSL2 звук идёт через WSLg PulseAudio).
+- **Node.js 22+ и npm** — для плагина (и для `npm ci` / typecheck).
+- **Python 3.9+** — для STT-сервера.
+- Системные пакеты: `alsa-utils` (`arecord`), `libasound2-plugins`, `ffmpeg`, опционально `libnotify`.
+- **Chrome/Chromium** — для кнопки 🎤 в веб-интерфейсе (TUI работает и без неё).
+- Опционально: NVIDIA GPU с WSL-совместимым драйвером — для `whisper.cpp` + CUDA.
+
+> **Папка `.opencode/` генерируется локально.** `sync-plugin.sh` создаёт `voice-opencode-plugin/.opencode/plugins/index.ts` и `.opencode/tui/voice.ts` (копирует `src/index.ts` и правит импорты). Папка в `.gitignore` — запускайте синк после каждого клона и после правок `src/index.ts`.
 
 ## Установка
 
-### 1. Аудио в WSL2
+### 0. Быстрый старт
+
+```bash
+git clone https://github.com/Di1r1/OpenCode-Voice.git
+cd OpenCode-Voice/voice-opencode-plugin
+
+# 1. зависимости сервера (CPU-бэкенд)
+pip install --no-input -r stt-server/requirements.txt
+
+# 2. зависимости плагина + локальные entry-точки
+npm install
+bash sync-plugin.sh
+
+# 3. прописать плагин в конфиг OpenCode (см. шаг 3), затем:
+opencode web --hostname 0.0.0.0
+```
+
+Плагин сам поднимает STT-сервер при загрузке и следит за ним через watchdog — отдельный `python3 stt_server.py` нужен только для ручного запуска. Проверка — `/voice doctor` (шаг 5).
+
+### 1. Звук
+
+**Linux (десктоп)** — дополнительная настройка не нужна, используется PulseAudio/ALSA. Найдите источник микрофона:
+
+```bash
+pactl list short sources        # напр. alsa_input.pci-0000_00_1f.3.analog-stereo
+export OPENCODE_VOICE_SOURCE=$(pactl get-default-source)   # зафиксировать (см. «Конфигурация»)
+arecord -D pulse -f S16_LE -r 16000 -c 1 -t wav -d 3 /tmp/t.wav && ls -la /tmp/t.wav
+```
+
+**WSL2:**
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y alsa-utils libasound2-plugins ffmpeg
 export PULSE_SERVER=unix:/mnt/wslg/PulseServer
 
-# проверка
+# проверка (должен получиться файл ~500 КБ, а не заглушка 44 байта)
 pactl info
-arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav   # файл должен быть ~500 КБ, не 44 байта
+arecord -D pulse -f S16_LE -r 16000 -c 1 -t wav -d 3 /tmp/t.wav && ls -la /tmp/t.wav
 ```
 
-> В WSL2 нет `/dev/snd` — это нормально. Микрофон доступен только через `PULSE_SERVER=unix:/mnt/wslg/PulseServer`.
+В WSL2 нет `/dev/snd` — это нормально; микрофон доступен только через `PULSE_SERVER=unix:/mnt/wslg/PulseServer`. Записи пишутся в ОЗУ (`/dev/shm/opencode-voice`, tmpfs).
 
 ### 2. STT-сервер
 
@@ -42,36 +77,90 @@ arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav   # файл дол�
 cd voice-opencode-plugin/stt-server
 pip install --no-input -r requirements.txt      # flask + faster-whisper (CPU-бэкенд)
 
-export PULSE_SERVER=unix:/mnt/wslg/PulseServer
+export PULSE_SERVER=unix:/mnt/wslg/PulseServer   # только WSL2
 python3 stt_server.py --model medium --port 8765
 ```
 
-Сервер по умолчанию слушает `127.0.0.1` и стартует даже без `faster-whisper`, если используется GPU-бэкенд (whisper.cpp) — CPU-пакет импортируется лениво.
+- Слушает `127.0.0.1` по умолчанию; проверка: `curl -s 127.0.0.1:8765/health`.
+- Запускается и без `faster-whisper`, если используется GPU-бэкенд (`whisper.cpp`) — CPU-пакет импортируется лениво.
+- Модели: `tiny` / `base` / `small` / `medium` (по умолчанию) / `large`.
+- При старте печатает проверки окружения (Python, CUDA-драйвер, рекордер, CLI/модель whisper.cpp, `PULSE_SERVER`).
+- Проверка без микрофона: `OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765`.
 
-Плагин сам запускает этот сервер при загрузке OpenCode (если он ещё не запущен) и следит за его живостью — ручной запуск необязателен.
-
-Модели: `tiny` / `base` / `small` / `medium` (по умолчанию) / `large`. Проверка: `curl -s localhost:8765/health`.
-
-Без микрофона можно проверить весь пайплайн на готовом WAV:
-
-```bash
-OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt_server.py --port 8765
-```
-
-Тесты маршрутов: `python3 test_stt_server.py --port 8765` (ручной, нужен запущенный сервер). Герметичные юнит-тесты: `cd voice-opencode-plugin && pip install -r stt-server/requirements-dev.txt && pytest`.
-
-### Опционально: ускорение на GPU (NVIDIA + CUDA, WSL2)
-
-По умолчанию сервер считает на CPU через `faster-whisper`. Если в WSL2 проброшена NVIDIA-видеокарта, можно использовать `whisper.cpp` с CUDA (проверено на GTX 950M / Maxwell, CC 5.0).
-
-1. Обнови драйвер NVIDIA в Windows до ветки с поддержкой WSL (R470+); после перезагрузки должен появиться `/usr/lib/wsl/lib/libcuda.so.1`.
-2. Поставь CUDA Toolkit в домашний каталог (без root). Нужна версия, поддерживающая твою карту — CUDA 13 убрала Maxwell/Pascal, поэтому для них 12.6:
+### 3. Плагин OpenCode
 
 ```bash
-sh cuda_12.6.0_560.28.03_linux.run --silent --toolkit --toolkitpath=$HOME/cuda-12.6 --no-opengl-libs --no-man-page --override
+cd voice-opencode-plugin
+npm install
+bash sync-plugin.sh        # создаёт .opencode/plugins/index.ts и .opencode/tui/voice.ts
+npm run typecheck
 ```
 
-3. Собери whisper.cpp с CUDA. Вместо `<cc>` — вычислительная способность (`50` Maxwell, `61` Pascal, `75` Turing, `86` Ampere):
+Затем укажите OpenCode на сгенерированную entry-точку. Плагин и хоткей TUI подключаются **file-URL** в конфиге OpenCode (именно так это подключено в рабочей установке):
+
+```jsonc
+// ~/.config/opencode/opencode.json   (глобальный)  — или ./opencode.json (проектный)
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    // ... ваши другие плагины ...
+    "file:///ABS/PATH/voice-opencode-plugin/.opencode/plugins/index.ts"
+  ]
+}
+```
+
+```jsonc
+// ~/.config/opencode/tui.json   (глобальный) — опционально: хоткей <leader>v
+{
+  "$schema": "https://opencode.ai/tui.json",
+  "plugin": ["file:///ABS/PATH/voice-opencode-plugin/.opencode/tui/voice.ts"]
+}
+```
+
+Замените `/ABS/PATH` на абсолютный путь к клону (например `/home/you/OpenCode-Voice`). Затем **перезапустите OpenCode** — конфиг и плагины читаются один раз при старте.
+
+В репозитории есть `voice-opencode-plugin/opencode.json` — проектная привязка для локального запуска (удобно для разработки).
+
+### 4. Расширение Chrome (кнопка 🎤)
+
+1. Откройте `chrome://extensions` и включите **Режим разработчика**.
+2. **Загрузить распакованное расширение** → выберите папку `voice-opencode-plugin/extension`.
+3. Откройте веб-интерфейс OpenCode — кнопка 🎤 появится рядом с полем ввода.
+
+Расширение обращается к STT-серверу по адресу `http(s)://<host>:8765` (`STT_PORT` в `extension/content.js`). В `extension/manifest.json` уже перечислены `localhost`/`127.0.0.1`; если хост другой — добавьте его в `host_permissions`. В popup есть настройки: **токен доступа** и **звуковые сигналы**.
+
+### 5. Проверка
+
+```bash
+# полная проверка пути «кнопка/расширение» (сервер, CORS, зависшая запись, микрофон)
+bash voice-opencode-plugin/doctor.sh          # добавьте --fix для авто-ремонта
+# или из TUI:
+/voice doctor --fix
+
+# здоровье сервера
+curl -s 127.0.0.1:8765/health
+
+# тесты (микрофон и модель не нужны)
+cd voice-opencode-plugin
+pip install --no-input -r stt-server/requirements-dev.txt
+python3 -m pytest          # 30 тестов
+npm run typecheck
+bash sync-plugin.sh --check
+```
+
+### Опционально: ускорение на GPU (NVIDIA + CUDA)
+
+По умолчанию сервер работает на CPU (`faster-whisper`). С NVIDIA GPU, проброшенной в WSL2 (или на Linux-хосте), можно использовать `whisper.cpp` с CUDA (проверено на GTX 950M / Maxwell, CC 5.0).
+
+1. Обновите драйвер NVIDIA до WSL-совместимой ветки (R470+). После перезагрузки должен появиться `/usr/lib/wsl/lib/libcuda.so.1`.
+2. Установите CUDA-тулкит в домашний каталог (без root). Берите версию, которая ещё поддерживает вашу GPU — CUDA 13 убрала Maxwell/Pascal, для них нужна 12.6:
+
+```bash
+sh cuda_12.6.0_560.28.03_linux.run --silent --toolkit --toolkitpath=$HOME/cuda-12.6 \
+  --no-opengl-libs --no-man-page --override
+```
+
+3. Соберите whisper.cpp с CUDA (`<cc>` = compute capability: `50` Maxwell, `61` Pascal, `75` Turing, `86` Ampere):
 
 ```bash
 git clone https://github.com/ggml-org/whisper.cpp && cd whisper.cpp
@@ -82,7 +171,7 @@ cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<cc> -DCMAKE_BUILD_TYPE
 cmake --build build -j4 --target whisper-cli
 ```
 
-4. Положи CLI и модель туда, где сервер их ищет:
+4. Установите CLI и модель туда, где их ищут плагин и сервер:
 
 ```bash
 DEST=$HOME/.local/share/opencode-voice/whisper
@@ -91,205 +180,155 @@ cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
 cp models/ggml-medium.bin $DEST/
 ```
 
-Сервер сам обнаружит CLI и переключится на него (`curl -s localhost:8765/health` покажет `"backend":"whispercpp"`, `"device":"cuda"`). Команда `/voice` в плагине использует тот же CLI, когда доступна CUDA. Если видеокарты нет (нет `libcuda`) — и плагин, и сервер автоматически откатываются на `faster-whisper` (CPU). Выбрать устройство явно: `/voice device cpu|gpu|auto` или `OPENCODE_VOICE_DEVICE=cpu` (аналогично `OPENCODE_VOICE_STT_BACKEND=faster-whisper`).
+Сервер и команда `/voice` сами найдут CLI (`/health` покажет `"backend":"whispercpp"`, `"device":"cuda"`). Если GPU нет (нет `libcuda`), оба откатятся на `faster-whisper` (CPU). Принудительно: `/voice device cpu|gpu|auto` или `OPENCODE_VOICE_DEVICE`; legacy-алиас `OPENCODE_VOICE_STT_BACKEND=faster-whisper` тоже работает.
 
-### 3. Плагин OpenCode
+## Использование
 
-```bash
-cd voice-opencode-plugin
-npm install
-bash sync-plugin.sh     # готовит точку входа плагина — нужно перед запуском
-npm run typecheck
-```
-
-`opencode.json` уже подключает плагин, `tui.json` — TUI/web-части; после клонирования выполни шаг синхронизации выше, чтобы локальные точки входа появились. Запуск:
-
-```bash
-export OPENCODE_VOICE_BACKEND=local OPENCODE_VOICE_LANGUAGE=ru PULSE_SERVER=unix:/mnt/wslg/PulseServer
-opencode web --hostname 0.0.0.0
-```
-
-### 4. Расширение Chrome (кнопка 🎤)
-
-1. Открыть `chrome://extensions`, включить **Developer mode**.
-2. **Load unpacked** → выбрать папку `voice-opencode-plugin/extension`.
-3. Открыть web UI OpenCode — кнопка 🎤 появится рядом с полем ввода.
-
-Расширение обращается к STT-серверу по `http(s)://<host>:8765` (порт `STT_PORT` в `extension/content.js`). В `extension/manifest.json` уже прописаны `localhost`/`127.0.0.1`; при смене хоста добавьте его в `host_permissions`.
-
-Опционально: кнопку 🎤 прямо в prompt OpenCode даёт встроенный TUI/web-плагин — добавьте её в список `plugin` своего TUI-конфига (`~/.config/opencode/tui.json`).
-
-## Команды `/voice`
+### Команды `/voice`
 
 | Команда | Действие |
-|---------|----------|
-| `/voice` | Push-to-talk: запись → распознавание → вставка текста в промпт |
-| `/voice <file.wav>` | Распознать локальный аудиофайл (без микрофона) |
-| `/voice backend [local\|api]` | Показать/сменить STT-бэкенд |
-| `/voice lang [ru\|en\|auto]` | Показать/сменить язык |
-| `/voice device [auto\|gpu\|cpu]` | Показать/сменить устройство: GPU (whisper.cpp) или CPU (faster-whisper) |
-| `/voice doctor [--fix]` | Диагностика пути «кнопка/расширение» (сервер, CORS, зависшая запись, микрофон) с авторемонтом по `--fix` |
+|---------|--------|
+| `/voice` | Push-to-talk: запись до ~1.5 с тишины (жёсткий предел 60 с), распознавание, текст в поле ввода |
+| `/voice <file.wav>` | Распознать локальный файл (`wav`/`mp3`/`m4a`/`ogg`/`flac`) |
+| `/voice backend [local\|api]` | Показать/переключить бэкенд |
+| `/voice lang [ru\|en\|auto]` | Показать/переключить язык |
+| `/voice device [auto\|gpu\|cpu]` | Показать/переключить устройство: GPU (`whisper.cpp`) или CPU (`faster-whisper`) |
+| `/voice doctor [--fix]` | Диагностика пути «кнопка/расширение» и авто-ремонт |
+| `/voice help` | Список всех подкоманд |
 
-TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) запускает push-to-talk.
+TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запускает push-to-talk. Веб-интерфейс: кнопка 🎤 из расширения.
 
-## CPU или GPU (локальное распознавание)
-
-Локальный бэкенд использует GPU, когда он есть, и **автоматически откатывается на CPU**.
-
-| Устройство | Что запускается |
-|------------|-----------------|
-| `auto` (по умолчанию) + CUDA (есть `libcuda`) | `whisper.cpp` + `ggml-medium.bin` на GPU |
-| `auto` без видеокарты | `faster-whisper` (medium) на CPU |
-| `gpu` | только `whisper.cpp` на GPU (при недоступности — ошибка, без тихого отката) |
-| `cpu` | только `faster-whisper` на CPU |
-
-Для CPU-пути **не нужна** сборка whisper.cpp/CUDA.
-
-### Как вручную переключиться на CPU
-
-В рантайме, для текущей сессии `/voice` (синоним `/voice dev`):
-
-```
-/voice device          # показать текущее
-/voice device cpu      # CPU: faster-whisper
-/voice device gpu      # GPU: whisper.cpp
-/voice device auto     # GPU, если есть, иначе CPU
-```
-
-Постоянно, через переменные окружения:
-
-```bash
-export OPENCODE_VOICE_DEVICE=cpu              # предпочтительно
-# старый алиас, то же самое:
-export OPENCODE_VOICE_STT_BACKEND=faster-whisper
-```
-
-`/voice device` сбрасывается при перезапуске OpenCode — чтобы закрепить выбор, используйте переменную окружения.
-STT-сервер (путь кнопки 🎤) тоже читает `OPENCODE_VOICE_DEVICE=cpu`; после смены переменной перезапустите сервер.
-
-### Пример: машина без NVIDIA GPU
-
-```bash
-cd voice-opencode-plugin/stt-server
-pip install --no-input faster-whisper flask requests
-export OPENCODE_VOICE_DEVICE=cpu
-export OPENCODE_VOICE_LANGUAGE=ru
-# medium — по умолчанию; на медленном CPU возьмите модель меньше:
-# export WHISPER_MODEL=small
-export PULSE_SERVER=unix:/mnt/wslg/PulseServer
-opencode web --hostname 0.0.0.0
-```
-
-### Модель и настройки распознавания
-
-- Размер модели на CPU: `WHISPER_MODEL=medium` (по умолчанию) — `tiny` | `base` | `small` | `medium` | `large`.
-- Файл модели на GPU: `WHISPER_CPP_MODEL=…/ggml-medium.bin` — можно указать любой `ggml-*.bin`.
-- `WHISPER_CPP_BIN` — путь к бинарнику `whisper-cli`.
-- `WHISPER_CPP_MODEL_FALLBACK` — ggml-модель, если `faster-whisper` не установлен (по умолчанию `ggml-small.bin`).
-- `WHISPER_BEAM_SIZE` — beam декодера (`1` = greedy/быстрее всего, больше = чуть точнее, но медленнее).
-- `WHISPER_VAD` — VAD-фильтр (`1`/`0`).
-- `OPENCODE_VOICE_SILENCE_PEAK` / `OPENCODE_VOICE_SILENCE_RMS` — порог тишины: если пик и RMS ниже обоих значений, запись считается «без речи» (Whisper галлюцинирует на тишине). По умолчанию `700` / `80`.
-- Авто-стоп `/voice`: запись идёт, пока вы говорите, и останавливается через ~1.5 с тишины (жёсткий предел — 60 с аудио). Остановка мягкая (SIGINT), поэтому WAV-заголовок остаётся корректным. При медленном RDP-звуке запись может занять больше реального времени.
-- `WHISPER_INITIAL_PROMPT` — подсказка-контекст для Whisper (по умолчанию выкл).
-- `WHISPER_LANG_DETECT_SEGMENTS` / `WHISPER_LANG_DETECT_THRESHOLD` — тонкая настройка авто-определения языка.
-- `/voice lang ru|en|auto` — смена языка в рантайме; `/voice backend local|api` — локальные модели или OpenAI API.
-
-Полный список переменных: [Конфигурация](#конфигурация-переменные-окружения) ниже.
+Известные ограничения команды в TUI (особенность OpenCode): хук блокируется на время записи (живого таймера на экране нет), а неудачная попытка пишется как ERROR в лог OpenCode (плагин специально бросает исключение, чтобы не уходил пустой запрос).
 
 ## Конфигурация (переменные окружения)
 
+### Плагин (TUI `/voice`)
+
 | Переменная | Назначение | По умолчанию |
-|------------|-----------|--------------|
+|----------|---------|---------|
 | `OPENCODE_VOICE_BACKEND` | `local` \| `api` | `local` |
-| `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto`/пусто (авто) | `ru` |
-| `OPENCODE_VOICE_DEVICE` | устройство: `auto` (GPU, иначе CPU) \| `gpu` \| `cpu` | `auto` |
+| `OPENCODE_VOICE_LANGUAGE` | `ru` \| `en` \| `auto` | `ru` |
+| `OPENCODE_VOICE_DEVICE` | `auto` (GPU, иначе CPU) \| `gpu` \| `cpu` | `auto` |
 | `OPENAI_API_KEY` | ключ для бэкенда `api` | — |
-| `WHISPER_MODEL` | модель локального бэкенда плагина (faster-whisper) | `medium` |
-| `WHISPER_BEAM_SIZE` | beam size декодера (`1` = greedy, быстрее всего) | `1` |
-| `WHISPER_VAD` | VAD-фильтр (`1`/`0`) | `1` |
-| `OPENCODE_VOICE_SILENCE_PEAK` | Порог тишины: пик ниже значения — запись считается тишиной | `700` |
-| `OPENCODE_VOICE_SILENCE_RMS` | Порог тишины: RMS ниже значения — запись считается тишиной | `80` |
-| `OPENCODE_VOICE_RECOGNIZED_LOG` | Файл, куда пишется каждый распознанный текст с источником (`command`/`button`), бэкендом, моделью, языком и длительностью | `/tmp/opencode/voice-recognized.log` |
-| `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |
-| `WHISPER_LANG_DETECT_SEGMENTS` | сегментов для авто-определения языка | `3` |
-| `WHISPER_LANG_DETECT_THRESHOLD` | порог уверенности языка | `0.6` |
-| `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); пусто = авто | авто |
-| `OPENCODE_VOICE_SOURCE` | Источник PulseAudio (микрофон) для записи; задаётся явно, чтобы default не съезжал на `RDPSink.monitor` (лупбек воспроизведения) | `RDPSource` |
-| `OPENCODE_VOICE_TMP_DIR` | Каталог для записей; по умолчанию tmpfs — **ОЗУ**, а не диск | `/dev/shm/opencode-voice` |
-| `OPENCODE_VOICE_RETAIN_SECONDS` | Сколько секунд хранить запись до авто-удаления; `0` — удалять сразу после распознавания | `300` |
-| `WHISPER_CPP_BIN` | путь к CLI whisper.cpp | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
-| `WHISPER_CPP_MODEL` | путь к ggml-модели whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
-| `WHISPER_CPP_MODEL_FALLBACK` | CPU ggml-модель, если faster-whisper не установлен | `…/ggml-small.bin` |
-| `OPENCODE_VOICE_MAX_SECONDS` | максимум записи на сервере | `120` |
-| `OPENCODE_VOICE_FAKE_AUDIO` | путь к WAV для теста без микрофона | — |
-| `OPENCODE_VOICE_AUTO_RECOVER` | авто-пересоздание аудиоканала WSLg при молчащем источнике | `1` |
-| `OPENCODE_VOICE_KEEP_AUDIO` | каталог для сохранения записанного аудио (отладка) | — |
-| `OPENCODE_VOICE_SERVER` | авто-запуск STT-сервера при загрузке плагина | `1` |
+| `OPENCODE_VOICE_MODEL` | имя модели для `api` | `whisper-1` |
+| `WHISPER_MODEL` | модель локального faster-whisper | `medium` |
+| `OPENCODE_VOICE_SOURCE` | источник PulseAudio (микрофон); прибит, чтобы default не уехал на monitor воспроизведения | `RDPSource` (WSLg) |
+| `OPENCODE_VOICE_TMP_DIR` | каталог записей (по умолчанию ОЗУ) | `/dev/shm/opencode-voice` |
+| `OPENCODE_VOICE_RETAIN_SECONDS` | сколько хранить запись до авто-удаления, с (`0` — сразу после распознавания) | `300` |
+| `OPENCODE_VOICE_KEEP_AUDIO` | если задано — записи не удалять (отладка) | — |
+| `OPENCODE_VOICE_AUTO_RECOVER` | пересоздавать аудиоканал WSLg при молчащем источнике | `1` |
+| `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | тайминги восстановления | `90`, `8000`, `5000` мс |
+
+### STT-сервер
+
+| Переменная | Назначение | По умолчанию |
+|----------|---------|---------|
+| `OPENCODE_VOICE_PORT` | порт сервера | `8765` |
+| `OPENCODE_VOICE_HOST` | хост привязки; по умолчанию только localhost | `127.0.0.1` |
+| `OPENCODE_VOICE_SERVER` | авто-запуск сервера при загрузке плагина | `1` |
 | `OPENCODE_VOICE_SERVER_SCRIPT` | путь к `stt_server.py` (нестандартная раскладка) | авто |
-| `OPENCODE_VOICE_PORT` | порт STT-сервера | `8765` |
-| `OPENCODE_VOICE_HOST` | адрес привязки STT-сервера; по умолчанию только localhost. `0.0.0.0` — только если нужен доступ по сети (лучше вместе с `OPENCODE_VOICE_TOKEN`) | `127.0.0.1` |
-| `OPENCODE_VOICE_TOKEN` | необязательный общий секрет; если задан, все эндпоинты кроме `/health` требуют заголовок `X-Voice-Token` (или `Authorization: Bearer`). В popup расширения есть поле для токена | пусто (выкл) |
-| `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | период проверки/перезапуска, `0` = выкл | `120000` |
-| `PULSE_SERVER` | сокет PulseAudio | авто `/mnt/wslg/PulseServer` |
+| `OPENCODE_VOICE_SERVER_LOG` | файл лога сервера | `/tmp/opencode/stt_server.log` |
+| `OPENCODE_VOICE_SERVER_WATCHDOG_MS` | период проверки/перезапуска, мс (`0` — выкл) | `120000` |
+| `OPENCODE_VOICE_MAX_SECONDS` | максимальная длина серверной записи, с | `120` |
+| `OPENCODE_VOICE_FAKE_AUDIO` | WAV вместо микрофона (тесты) | — |
+| `OPENCODE_VOICE_TOKEN` | общий секрет; если задан, все эндпоинты кроме `/health` требуют `X-Voice-Token` (или `Authorization: Bearer`) | пусто (выкл) |
+| `PULSE_SERVER` | сокет PulseAudio | `/mnt/wslg/PulseServer` в WSL2 |
 
-**Безопасность:** STT-сервер слушает только `127.0.0.1` и отдаёт CORS лишь локальным origin (UI OpenCode, расширение). Задай `OPENCODE_VOICE_TOKEN`, чтобы требовать общий секрет на всех запросах кроме `/health`. Без токена, если открыть его наружу (`--host 0.0.0.0` / `OPENCODE_VOICE_HOST=0.0.0.0`), любой в сети сможет писать с твоего микрофона и читать расшифровки.
+### Качество распознавания и модели
 
-На коротких фразах авто-определение языка ограничено: если обычно говорите на одном языке, надёжнее задать его явно (`OPENCODE_VOICE_LANGUAGE=ru`).
+| Переменная | Назначение | По умолчанию |
+|----------|---------|---------|
+| `WHISPER_CPP_BIN` | путь к CLI whisper.cpp | `~/.local/share/opencode-voice/whisper/bin/whisper-cli` |
+| `WHISPER_CPP_MODEL` | ggml-модель whisper.cpp | `~/.local/share/opencode-voice/whisper/ggml-medium.bin` |
+| `WHISPER_CPP_MODEL_FALLBACK` | ggml-модель для CPU, когда faster-whisper не установлен | `…/ggml-small.bin` |
+| `WHISPER_CPP_LIB_DIR`, `WHISPER_CPP_EXTRA_LIBS` | доп. пути библиотек для CLI | авто |
+| `WHISPER_BEAM_SIZE` | beam декодера (`1` = жадный/самый быстрый) | `1` |
+| `WHISPER_VAD` | фильтр голосовой активности (`1`/`0`) | `1` |
+| `WHISPER_INITIAL_PROMPT` | подсказка-контекст для Whisper | пусто (выкл) |
+| `WHISPER_LANG_DETECT_SEGMENTS` / `WHISPER_LANG_DETECT_THRESHOLD` | тонкая настройка авто-определения языка | `3` / `0.6` |
+| `OPENCODE_VOICE_SILENCE_PEAK` / `_RMS` | порог тишины: ниже обоих значений фрагмент считается «без речи» (Whisper галлюцинирует на тишине) | `700` / `80` |
+| `OPENCODE_VOICE_STT_BACKEND` | `whispercpp` (GPU) \| `faster-whisper` (CPU); пусто = авто | авто |
+| `OPENCODE_VOICE_LANGUAGE` | язык на стороне сервера (`ru`/`en`); пусто = авто-определение | авто |
 
-## Если микрофон недоступен
+На коротких фразах авто-определение языка ненадёжно — если говорите на одном языке, задайте его явно (`OPENCODE_VOICE_LANGUAGE=ru`).
 
-Сервер отвечает одной из двух ошибок:
+**Безопасность:** сервер слушает только `127.0.0.1` и отдаёт CORS лишь локальным origin (интерфейс OpenCode, расширение). Задайте `OPENCODE_VOICE_TOKEN`, чтобы требовать общий секрет во всех запросах кроме `/health`. Без токена при выставлении сервера наружу (`--host 0.0.0.0` / `OPENCODE_VOICE_HOST=0.0.0.0`) любой в сети сможет писать с вашего микрофона и читать расшифровки.
+
+## Логи и диагностика
+
+| Файл | Содержимое |
+|------|----------|
+| `/tmp/opencode/stt_server.log` | Лог STT-сервера: проверки при старте и каждое распознавание (кнопка и серверная запись) |
+| `/tmp/opencode/voice-recognized.log` | каждый распознанный текст с `source=` (`command` = `/voice`, `button` = расширение), бэкендом, моделью, языком, длительностью |
+| `/tmp/opencode/voice-stt.log` | какой бэкенд/модель использовал плагин + уровни аудио |
+| `/tmp/opencode/voice-requests.log` | входящие HTTP-запросы (путь кнопки): `/beep`, `/transcribe`, `/record/*` |
+| `/dev/shm/opencode-voice/` | записи (ОЗУ); удаляются через `OPENCODE_VOICE_RETAIN_SECONDS` |
+| `/mnt/wslg/wlog.log` | лог WSLg; строки `audin … error 1359` — известный артефакт завершения канала, не критерий |
+
+`/voice doctor` (или `bash doctor.sh`) печатает сводку по всему перечисленному и умеет ремонтировать типовые проблемы с `--fix`.
+
+## Решение проблем
+
+### Микрофон недоступен
+
+Сервер вернёт одну из двух ошибок:
 
 - `Нет доступа к микрофону: PulseAudio не отвечает…` — рекордер не смог подключиться.
-- `Аудиоисточник молчит: рекордер подключился, но данных нет (получено N байт)…` — подключился, но WSLg не отдаёт звук по каналу `audin`.
-
-Проверка:
+- `Аудиоисточник молчит: рекордер подключился, но данных нет (получено N байт)…` — подключился, но звук не идёт по каналу `audin` WSLg.
 
 ```bash
 PULSE_SERVER=unix:/mnt/wslg/PulseServer pactl info
-PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -r 16000 -c 1 -t wav -d 3 /tmp/t.wav
+PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f S16_LE -r 16000 -c 1 -t wav -d 3 /tmp/t.wav
 ```
 
-**Быстрый фикс:** запусти скрипт (пересоздаёт внутренний RDP-канал WSLg — перезапускает weston и pulseaudio):
+**Быстрый ремонт (WSL2):** `bash voice-opencode-plugin/fix-mic.sh` пересоздаёт внутренний RDP-канал WSLg (перезапускает weston и pulseaudio). Сервер также один раз самолечится при молчащем источнике (`OPENCODE_VOICE_AUTO_RECOVER=0` отключает это).
 
-```bash
-bash voice-opencode-plugin/fix-mic.sh
-```
+Убедитесь, что приложение имеет доступ к микрофону в Windows (Параметры → Конфиденциальность → Микрофон); в RDP-сессии включите «Записывать с этого компьютера». Крайняя мера из Windows: `wsl --shutdown`.
 
-STT-сервер умеет самовосстанавливаться: при молчащем источнике он один раз пересоздаёт аудиоканал WSLg и повторяет запись (отключается через `OPENCODE_VOICE_AUTO_RECOVER=0`).
+### Кнопка 🎤 пишет "Failed to fetch"
 
-Те же шаги вручную (без `wsl --shutdown`), выполнять из WSL:
+Обычно сервер не запущен или у него устаревший CORS. Запустите `bash voice-opencode-plugin/doctor.sh --fix`: он перезапустит сервер через watchdog и перепроверит preflight для `X-Voice-Source`/`X-Voice-Token`. Если задан токен — введите его же в popup расширения.
 
-```bash
-# 1. пересоздать RDP-сессию WSLg (WSLGd сам поднимет weston); GUI WSLg перезапустится
-/mnt/c/Windows/System32/wsl.exe --system -e sh -lc 'pkill -9 -x weston'
-sleep 8
-# 2. перезапустить PulseAudio, чтобы подключился к свежему каналу
-/mnt/c/Windows/System32/wsl.exe --system -e sh -lc 'pkill -9 -x pulseaudio'
-sleep 5
-# 3. проверка: должен записаться реальный файл (~500 КБ), а не 44 байта
-PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f cd -d 3 /tmp/t.wav && ls -la /tmp/t.wav
-```
+### Запись зависла / "already recording"
 
-Также проверьте доступ приложения к микрофону в Windows (Параметры → Конфиденциальность → Микрофон); в RDP-сессии включите «Запись с этого компьютера». Если не помогло — полный рестарт: `wsl --shutdown` (из Windows PowerShell) и заново открыть WSL.
+Зависшая серверная запись даёт `409`. Расширение восстанавливается само; вручную: `curl -X POST http://127.0.0.1:8765/record/stop`. `doctor.sh --fix` делает это тоже.
+
+### Плохое распознавание по RDP
+
+`/voice` пишет через RDP-канал `audin`, который может отдавать звук медленнее реального времени. Качество тогда зависит от захвата микрофона в RDP-клиенте. Помогает: клиент с корректным перенаправлением ввода, реальный микрофон (не «Стереомикшер»), отключённые AGC/шумоподавление, и предпочтительно кнопка 🎤 в браузере (она ловит звук на стороне Windows и загружает файл, минуя `audin`).
 
 ## Структура
 
 ```
 voice-opencode-plugin/
-├── src/                     # код плагина (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
-├── stt-server/              # Flask-сервер: stt_server.py, requirements*.txt, tests/, ручной скрипт тестов
-├── extension/               # расширение Chrome (MV3)
-├── fix-mic.sh               # пересоздание аудиоканала WSLg (починка микрофона)
-├── sync-plugin.sh           # готовит локальные точки входа плагина/TUI (--check для CI)
-├── opencode.json            # подключение плагина + агенты
-├── tui.json                 # TUI/web плагины (пример; глобально не загружается)
+├── src/                     # код плагина (index.ts, lib/{config,stt,recorder,beep,server-launcher}.ts)
+├── stt-server/              # Flask-сервер: stt_server.py, requirements*.txt, tests/
+├── extension/               # расширение Chrome (MV3): content.js, popup, manifest
+├── doctor.sh                # диагностика/ремонт (/voice doctor)
+├── fix-mic.sh               # пересоздание аудиоканала WSLg
+├── sync-plugin.sh           # генерация локальных entry-точек (--check для CI)
+├── opencode.json            # проектная привязка плагина (для разработки)
+├── tui.json                 # проектная привязка TUI-плагина (пример)
 ├── pytest.ini               # герметичные тесты сервера
-├── AGENTS.md                # заметки по архитектуре
-└── TEST_PLAN.md             # план тестирования
+├── AGENTS.md                # заметки по архитектуре для агентов/контрибьюторов
+├── TEST_PLAN.md             # план ручного тестирования
+└── .opencode/               # генерируется sync-plugin.sh (в .gitignore)
 ```
 
-В корне репозитория также: `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `LICENSE` и CI в `.github/workflows/ci.yml`.
+В корне репозитория также `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `LICENSE` и CI в `.github/workflows/ci.yml`.
+
+## Разработка
+
+```bash
+cd voice-opencode-plugin
+npm install
+bash sync-plugin.sh            # после каждой правки src/index.ts
+npm run typecheck
+python3 -m pytest              # тесты сервера (герметично: без микрофона и модели)
+bash sync-plugin.sh --check    # защита CI: entry-точки актуальны
+```
+
+CI прогоняет те же проверки на каждый push. Для интерактивной разработки: `npm run dev` (`opencode --plugin .`).
 
 ## Лицензия
 

@@ -1,6 +1,6 @@
 # Аудит OpenCode Voice — путь до промышленной эксплуатации
 
-**Дата:** 2026-09-17 · **База:** коммит `ff4a1cc` · **Легенда:** ✅ сделано · 🚧 частично · ⬜ запланировано
+**Дата:** 2026-09-17 · **База:** коммит `9299810` · **Легенда:** ✅ сделано · 🚧 частично · ⬜ запланировано
 
 Документ ведём по мере работ: отмечаем статус и коммит.
 
@@ -23,9 +23,10 @@
 
 ### 4. CI и автотесты
 - ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `sync-plugin.sh --check` → `py_compile` → `pytest`.
-- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, 21 шт.): `/health`, CORS (allow/deny), токен (off/401/200/health-exempt), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`, `_runtime_checks`/`_cuda_driver_version`. Микрофон и модель не нужны.
+- ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, **30 шт.**): `/health` (backend/python/auth), CORS (allow/deny + `X-Voice-Source`), токен (off/401/200/health-exempt), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`, `_runtime_checks`/`_cuda_driver_version`, порог тишины (`_wav_levels`/`_is_silent`), анти-галлюцинационные флаги, `_wav_duration`, тег `source=` в логе распознавания и экранирование текста. Микрофон и модель не нужны.
 - ✅ Побочный фикс: `/health` теперь отдаёт эффективный `backend` и при запуске не через `main()`.
-- ⬜ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python).
+- ✅ Порог тишины + анти-галлюцинации: на тишине/шуме Whisper не запускается (`OPENCODE_VOICE_SILENCE_PEAK/_RMS`); whisper.cpp работает с `-mc 0 -sns`. Плагин и сервер. — коммит `90ca852`
+- ⬜ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python) — покрыто только серверное поведение.
 
 ### 5. Дублирование логики TS ↔ Python
 - ⬜ Выбор бэкенда, дефолты моделей и `stripNonSpeech` реализованы дважды (`src/lib/stt.ts` и `stt-server/stt_server.py`) и уже рассинхронизировались. Решение: один источник истины (плагин ходит в сервер, либо общий формат/генерация).
@@ -39,7 +40,7 @@
 8. ⬜ **Портируемость**: захардкожены `~/cuda-12.6/lib64`, `~/.local/share/opencode-voice/whisper/*`. Авто-детекция + только env. — `src/lib/stt.ts:288`, `stt_server.py:100,286`, `_cuda_available`
 9. ⬜ **Адаптивный выбор модели**: сейчас дефолт `medium` и на CPU (медленно). Автоподбор (CPU→small, GPU→medium) или явная настройка.
 10. ⬜ **Сериализация транскрибации**: Flask `threaded=True` + общий объект модели faster-whisper → возможные конфликты при параллельных запросах. Lock/очередь.
-11. ⬜ **Блокирующий хук / логи**: `/voice` блокирует хук на 30 с (таймера нет), нормальные отказы пишутся как ERROR в лог OpenCode. Задокументировать в README/FAQ.
+11. ✅ **Блокирующий хук / логи**: поведение `/voice` (хук блокируется на время записи; отказы логируются как ERROR, чтобы не уходил пустой запрос; авто-стоп по тишине) задокументировано в README EN/RU и AGENTS.md. — `README.md`, `README.ru.md`
 12. ⬜ **npm-пакет**: нет `files`, `exports`, `repository`, `engines`, `prepublishOnly`; имя `opencode-voice` занято — использовать скоуп (`@di1r1/opencode-voice`). — `package.json`
 13. ⬜ **Chrome Web Store**: нет иконок (`icons`), `content_scripts.matches` включает `<all_urls>` (широкое разрешение — реджект), возможно лишние `activeTab`/`scripting`, нет политики приватности. — `extension/manifest.json`
 
@@ -48,21 +49,28 @@
 ## P2 — гигиена
 
 - ✅ Удалены: `TranscribeResult`, `STT_BACKENDS`, неиспользуемые поля `config` (`sampleRate`/`channels`/`bitsPerSample`/`pttKey`/`pulseServer`) и мёртвые env (`OPENCODE_VOICE_PTT_KEY`, `_BITS_PER_SAMPLE`, `_SAMPLE_RATE`, `_CHANNELS`), `stopPushToTalk`. — коммит `ff4a1cc`
-- ✅ `TEST_PLAN.md` актуализирован (`/dev/shm`, фиксированные 30 с).
+- ✅ `TEST_PLAN.md` актуализирован (ОЗУ `/dev/shm`, авто-стоп по тишине, doctor/кнопка, sync вместо ручного `cp/sed`).
 - ✅ `.opencode/web/voice.ts` переименован в **`.tsx`** (JSX требует `.tsx`) и включён в `tsc` (`jsx: preserve`, `jsxImportSource: @opentui/solid`); поправлены типы обработчиков. Файл **опционален** — в глобальном TUI-конфиге не подключён (см. README §4).
 - ✅ `sync-plugin.sh`: добавлен режим `--check` (для CI/локально); сам синк сохранён, т.к. глобальный конфиг OpenCode грузит именно `.opencode/plugins/index.ts` (проверено в `~/.config/opencode/opencode.json`). Проверка: `bash sync-plugin.sh --check` → OK.
 - ✅ `tui.json` приведён к нейтральному виду (убраны `theme`/`leader`/`attention`; остался список плагинов, путь web-плагина → `.tsx`).
 - ✅ `runPythonFile` (`stt.ts`) пишет временный `.py` в RAM-каталог с фолбэком в `os.tmpdir()`; `note()` оставлен в `/tmp/opencode` — это лог, не аудио.
 - ✅ `_record_cmd`: `-f cd` → `-f S16_LE`; проверено записью: `pcm_s16le, 16000 Hz, mono`.
+- ✅ Запись `/voice`: авто-стоп по тишине (~1.5 с) + жёсткий предел 60 с; остановка рекордера мягкая (SIGINT), WAV-заголовок всегда финализируется (раньше `SIGKILL` обрезал длинные записи). Проверено: `declared == actual`. — коммит `1f4a13f`
+- ✅ Единый лог распознанного текста `/tmp/opencode/voice-recognized.log` с `source=command|button`, бэкендом/моделью/языком/длительностью; расширение шлёт `X-Voice-Source`, сервер принимает заголовок в CORS. — коммит `1f4a13f`
+- ✅ `doctor.sh` (диагностика/ремонт пути кнопки) + `/voice doctor [--fix]`. — коммит `d951689`
+- ✅ 7 скиллов `ovi-*` (overview/plugin/server/extension/models/debug/dev), валидированы; удалены устаревшие `voice-debug`/`voice-stt`. — коммит `8d66782`
+- ✅ `.opencode/` вынесен из git (git-ignored, генерируется `sync-plugin.sh`; в CI добавлен `sync-plugin.sh` перед `--check`). — коммит `3ebde0b`
+- ✅ Удалён неиспользуемый `voice-button.user.js` (Tampermonkey) и его упоминания. — коммит `9299810`
 
 ---
 
-## Проверки (актуально на `ff4a1cc` + правки P2)
-- `tsc --noEmit` — OK (включая `.opencode/web/voice.tsx`)
+## Проверки (актуально на `9299810`)
+- `tsc --noEmit` — OK
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
-- `python3 -m pytest` (21 тест, герметично) — OK
-- Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`; PowerShell → `200`)
+- `python3 -m pytest` (**30 тестов**, герметично) — OK
+- Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог
-- Живой прогон из браузера (transcribe + beep) на новом bind/CORS — OK (лог `voice-requests.log`)
+- Живой прогон из браузера (transcribe + beep) и `/voice` (GPU whisper.cpp) — OK (`voice-requests.log`, `voice-recognized.log`)
+- Авто-стоп по тишине и мягкая остановка WAV — OK (`declared == actual`)

@@ -1,17 +1,36 @@
 # План тестирования opencode-voice
 
-## 1. Локальный бэкенд (faster-whisper) — требует модели
+Актуально для текущей реализации: запись `/voice` — до тишины (~1.5 с после речи, жёсткий предел 60 с аудио), остановка рекордера мягкая (SIGINT), файлы в ОЗУ, `doctor.sh` для пути кнопки.
+
+## 0. Быстрые проверки (без микрофона и модели)
+
+```bash
+cd voice-opencode-plugin
+npm install
+bash sync-plugin.sh
+npm run typecheck                 # tsc --noEmit
+bash sync-plugin.sh --check       # entry-точки актуальны
+python3 -m py_compile stt-server/stt_server.py
+pip install --no-input -r stt-server/requirements-dev.txt
+python3 -m pytest                 # 30 герметичных тестов (сервер)
+```
+
+**Ожидается:** всё зелёное; pytest не требует микрофона и моделей (faster-whisper импортируется лениво).
+
+---
+
+## 1. Локальный бэкенд (faster-whisper / whisper.cpp) — требует модели
 
 ### 1.1 Загрузка модели faster-whisper
 ```bash
 python3 -c "
 from faster_whisper import WhisperModel
-model = WhisperModel('medium', device='cpu', compute_type='int8')
-print('Модель medium загружена')
+WhisperModel('medium', device='cpu', compute_type='int8')
+print('ok')
 "
 ```
 
-### 1.2 Тест распознавания WAV
+### 1.2 Распознавание файла
 ```bash
 export OPENCODE_VOICE_BACKEND=local
 export OPENCODE_VOICE_LANGUAGE=ru
@@ -19,149 +38,164 @@ opencode
 # В TUI: /voice /tmp/voice_test.wav
 ```
 
-**Ожидается:** текст распознан (даже если это пустой/мусорный текст для синусоиды), toast "Готово" или ошибка с понятным текстом.
+**Ожидается:** текст распознан (для пустого/мусорного файла — понятная ошибка «речь не распознана»), тост «Готово».
+Для тишины срабатывает порог `OPENCODE_VOICE_SILENCE_PEAK/_RMS` — Whisper не запускается.
 
 ---
 
-## 2. Push-to-talk (микрофон) — требует ALSA-устройства
+## 2. Push-to-talk (микрофон)
 
-### 2.1 Проверка ALSA в WSL
-```bash
-# Внутри WSL (без контейнера песочницы)
-ls /dev/snd/
-arecord -l  # список устройств
-ls -l /dev/snd/
-```
+### 2.1 Проверка аудио
 
-### 2.2 Если ALSA доступна — тест записи
+Linux: `pactl info`, `pactl list short sources`, `arecord -D pulse -f S16_LE -r 16000 -c 1 -t wav -d 3 /tmp/t.wav`.
+WSL2: `/dev/snd` отсутствует — это норма; работает только `PULSE_SERVER=unix:/mnt/wslg/PulseServer`.
+
+### 2.2 Тест записи
+
 ```bash
-# Запуск в WSL-хосте (без контейнера песочницы)
-export PATH="$HOME/.local/bin:$PATH"
 export OPENCODE_VOICE_BACKEND=local
-export PULSE_SERVER=unix:/mnt/wslg/PulseServer
+export OPENCODE_VOICE_LANGUAGE=ru
+export OPENCODE_VOICE_SOURCE=$(pactl get-default-source)   # Linux; в WSL2 default RDPSource
+export PULSE_SERVER=unix:/mnt/wslg/PulseServer               # WSL2
 opencode
-# В TUI: /voice  — запись идёт фиксированные 30 секунд, затем распознавание
+# В TUI: /voice — говорить; запись сама остановится через ~1.5 с тишины
 ```
 
-**Ожидается:** запись сохраняется в `/dev/shm/opencode-voice/voice-ptt-*.wav` (RAM, tmpfs), текст вставляется в prompt. Файл удаляется автоматически через `OPENCODE_VOICE_RETAIN_SECONDS` (по умолчанию 300 с).
+**Ожидается:**
+- бип 880 Гц на старте, 520 Гц на остановке, 660 Гц перед вставкой текста;
+- файл в `/dev/shm/opencode-voice/voice-ptt-*.wav` (моно 16 кГц, заголовок финализирован);
+- текст вставлен в prompt, тост «Готово»;
+- файл удалится через `OPENCODE_VOICE_RETAIN_SECONDS` (по умолчанию 300 с);
+- в `/tmp/opencode/voice-recognized.log` строка `source=command … text="…"`.
+
+Крайние случаи: пустая запись/тишина → тост «речь не распознана», пустой запрос модели не уходит.
 
 ---
 
 ## 3. Разные форматы аудио
 
-Создать тестовые файлы и проверить:
 ```bash
-# MP3 (если ffmpeg установлен — уже установлен)
 ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test.mp3 -y
-
-# OGG
 ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test.ogg -y
-
-# FLAC
 ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -ac 1 -ar 16000 /tmp/test.flac -y
-```
-
-Проверка плагином:
-```bash
+# В TUI:
 /voice /tmp/test.mp3
 /voice /tmp/test.ogg
 /voice /tmp/test.flac
 ```
 
----
-
-## 4. Переключение бэкендов в реальном времени
-
-```bash
-/voice backend         # показать текущий
-/voice backend local    # переключить на local
-/voice backend api      # переключить на api
-```
-
-**Проверка:** каждый вызов показывает toast с текущим/новым бэкендом и возвращает валидный ответ (без `UnknownError`).
+**Ожидается:** понятный результат по каждому; whisper.cpp-путь сам конвертирует не-WAV через ffmpeg (`_to_wav`).
 
 ---
 
-## 5. Переключение языка в реальном времени
+## 4. Переключение бэкенда/языка/устройства
 
-```bash
-/voice lang             # показать текущий (ru)
-/voice lang en          # переключить на en
-/voice lang auto        # переключить на auto
-/voice lang ru          # вернуться на ru
+```
+/voice backend            # показать (local)
+/voice backend local      # переключить
+/voice lang               # показать (ru)
+/voice lang en|auto|ru
+/voice device             # показать (auto)
+/voice device cpu|gpu|auto
+/voice help
 ```
 
-## 5.1. Переключение устройства (GPU/CPU)
+**Ожидается:** тост с текущим/новым значением, валидный ответ (без `UnknownError`); info-подкоманды не отправляют пустой запрос (кладётся служебный текст).
 
-```bash
-/voice device           # показать текущее (auto)
-/voice device cpu       # CPU: faster-whisper
-/voice device gpu       # GPU: whisper.cpp + CUDA
-/voice device auto      # авто: GPU, иначе CPU
-```
-
-**Ожидается:** toast с новым устройством; при `cpu` в `/tmp/opencode/voice-stt.log` пишется `faster-whisper`, при `gpu` — `whispercpp`.
-Без GPU (нет `libcuda`) `auto` и `gpu` не должны падать — срабатывает откат на CPU
-(`OPENCODE_VOICE_DEVICE=cpu` принудительно включает CPU).
+Проверка выбора движка: `/tmp/opencode/voice-stt.log` — `whispercpp` для GPU, `faster-whisper` для CPU. Без GPU `auto`/`gpu` не должны падать (откат на CPU).
 
 ---
 
-## 6. Тест с реальным голосом (через микрофон в WSL)
+## 5. Кнопка расширения (браузерный путь)
 
-### Предусловия:
-- Запуск в WSL2 без контейнера песочницы (`/mnt/c/temp/openvi/...`)
-- `ffmpeg` доступен в PATH
-- `python3` + `faster-whisper` установлен (`pip install faster-whisper` уже выполнено)
-- Модель `medium` загружена (`faster-whisper` скачивает автоматически при первом запуске)
+1. `chrome://extensions` → Reload расширения (версия 1.0.7), открыть OpenCode Web UI, клик по 🎤, сказать, клик — стоп.
 
-### Шаги:
+**Ожидается:** сигналы 880/520/660, текст в поле ввода; сервер доступен (`/voice doctor`).
+
+Диагностика:
+```bash
+bash voice-opencode-plugin/doctor.sh          # полная проверка
+bash voice-opencode-plugin/doctor.sh --fix    # + ремонт
+curl -s 127.0.0.1:8765/health
+```
+
+Проверяемые сценарии:
+- [ ] сервер не запущен → `Failed to fetch`; `doctor.sh --fix` поднимает сервер;
+- [ ] устаревший CORS (нет `X-Voice-Source` в preflight) → `Failed to fetch`; фикс — рестарт сервера;
+- [ ] задан `OPENCODE_VOICE_TOKEN` → без токена 401, с токеном 200; токен в popup;
+- [ ] зависшая серверная запись (`/record/status`) → `409`; расширение само вызывает `/record/stop`;
+- [ ] `GET /beep?freq=0` в `/tmp/opencode/voice-requests.log` (маркер версии);
+- [ ] в `/tmp/opencode/voice-recognized.log` строка `source=button …`.
+
+### Fake-audio (без микрофона)
+```bash
+OPENCODE_VOICE_FAKE_AUDIO=/tmp/test-voice.wav python3 stt-server/stt_server.py --port 8765
+```
+`/health` покажет `"fake_audio"`; `/record/start|stop` берут готовый WAV.
+
+---
+
+## 6. Тест с реальным голосом (TUI, WSL2)
+
+Предусловия: WSL2, `ffmpeg`, Python + модель, доступный `PULSE_SERVER`.
+
 1. `export OPENCODE_VOICE_BACKEND=local`
 2. `export OPENCODE_VOICE_LANGUAGE=ru`
-3. `cd /mnt/c/temp/openvi/voice-opencode-plugin`
+3. `cd voice-opencode-plugin && bash sync-plugin.sh`
 4. `opencode`
-5. В TUI: `/voice` (начать запись → говорить → нажать Enter для остановки)
-6. Ожидать: toast "Готово", текст распознанный в поле ввода
+5. `/voice` → говорить
+6. Ожидать: авто-стоп, распознанный текст в поле ввода
 
 ---
 
-## 7. Тест с облачным API (через HTTP)
+## 7. Облачный API
 
-### Предусловия:
-- `OPENAI_API_KEY` установлен в среде или `opencode.json`
-
-### Шаги:
 ```bash
 export OPENCODE_VOICE_BACKEND=api
-export OPENCODE_VOICE_LANGUAGE=ru
+export OPENAI_API_KEY=sk-...
 opencode
-# /voice /tmp/voice_test.wav (файл с речью или синусоидой)
+# /voice /tmp/voice_test.wav
 ```
-
-Ожидается: текст распознанный, toast "Готово", валидный ответ через `/session/{id}/command`.
-
----
-
-## 8. Тест скилов и агентов
-
-### Скилы (доступны через инструмент `skill` в сессии):
-- `skill({ name: "ovi-models" })` — модели/GPU/тюнинг; `ovi-overview` — обзор продукта
-- `skill({ name: "ovi-debug" })` — диагностика/ремонт (doctor.sh, Failed to fetch, тишина)
-
-### Агенты (доступны через `@` в TUI):
-- `@voice-builder` — агент для разработки плагина
-- `@voice-stt` — агент для настройки бэкендов
+**Ожидается:** текст распознан; при отсутствии ключа — понятная ошибка.
 
 ---
 
-## 9. Проверка после изменений
+## 8. Doctor / диагностика
 
-После любой правки `src/index.ts` или `.opencode/plugins/index.ts`:
 ```bash
-cp src/index.ts .opencode/plugins/index.ts
-sed -i 's|from "./lib/config"|from "../../src/lib/config"|g; ...' .opencode/plugins/index.ts
-# Перезапустить TUI и проверить:
-# - [ ] /voice backend -> toast
-# - [ ] /voice lang -> toast
-# - Нет "failed to load plugin" в логах
-# - Нет "UnknownError" при вызове через HTTP
+bash voice-opencode-plugin/doctor.sh
 ```
+**Ожидается:** сводка по серверу (процесс/порт/health), CORS-preflight, зависшей записи, микрофону (пик/RMS и скорость доставки) и свежести логов; при проблемах — подсказки. `--fix` ремонтирует.
+
+---
+
+## 9. Изоляция сервера
+
+- [ ] `OPENCODE_VOICE_TOKEN=secret` → `/health` без токена 200, остальные — 401; с `X-Voice-Token: secret` — 200.
+- [ ] CORS: запрос с чужим `Origin` не получает `Access-Control-Allow-Origin`.
+- [ ] `ss -ltn` → слушает `127.0.0.1:8765` (если не задан `OPENCODE_VOICE_HOST`).
+
+---
+
+## 10. Скиллы и агенты (если настроены локально)
+
+- Скиллы `ovi-overview`, `ovi-plugin`, `ovi-server`, `ovi-extension`, `ovi-models`, `ovi-debug`, `ovi-dev` — в `.opencode/skills/` (генерируемая, git-ignored часть; подхватываются только если путь виден OpenCode).
+- Агенты `voice-builder`, `voice-stt` — в проектном `voice-opencode-plugin/opencode.json` (`@voice-builder`, `@voice-stt` в TUI).
+
+---
+
+## 11. Проверка после изменений
+
+После любой правки `src/index.ts`:
+
+```bash
+bash sync-plugin.sh            # генерирует .opencode/plugins/index.ts
+bash sync-plugin.sh --check    # убедиться, что актуально
+npm run typecheck
+```
+
+Затем перезапустить OpenCode и проверить:
+- [ ] `/voice help` и `/voice backend` → тосты, без `UnknownError`;
+- [ ] нет «failed to load plugin» в логах OpenCode;
+- [ ] `/voice` записывает и вставляет текст;
+- [ ] `/voice doctor` зелёный.
