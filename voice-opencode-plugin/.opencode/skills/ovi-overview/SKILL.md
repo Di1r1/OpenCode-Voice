@@ -45,6 +45,8 @@ while `/voice` over RDP depends on the audin channel quality (see `ovi-debug`).
 | Server API, token, CORS, logs, autostart | `ovi-server` |
 | Button/extension, sounds, token in popup, versions | `ovi-extension` |
 | Models, CUDA/GPU, quality/speed tuning | `ovi-models` |
+| Microphone/audio path: silence, audin, formats, auto-stop, fix-mic | `ovi-audio` |
+| Security/privacy: token, CORS, bind, retention, secrets | `ovi-security` |
 | "It does not work": Failed to fetch, silence, 401/409, slow channel | `ovi-debug` |
 | Build/test/commit/release/docs | `ovi-dev` |
 

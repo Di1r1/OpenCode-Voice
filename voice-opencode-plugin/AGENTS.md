@@ -31,6 +31,8 @@ Load the matching skill (tool `skill`) **before** working on an area. Skills liv
 | STT HTTP server: `stt_server.py`, endpoints, token, CORS, autostart, logs | `ovi-server` |
 | Extension / 🎤 button, popup token, sounds, versions | `ovi-extension` |
 | Models, GPU/CUDA, quality/speed tuning | `ovi-models` |
+| Microphone / audio path: silence, audin, formats, auto-stop, `fix-mic.sh` | `ovi-audio` |
+| Security & privacy: token, CORS, bind, retention, secrets hygiene | `ovi-security` |
 | "It does not work": Failed to fetch, silence, 401/409, slow channel, mic repair | `ovi-debug` |
 | Build/test/commit/release/docs (`AGENTS.md`, README, AUDIT, TEST_PLAN) | `ovi-dev` |
 

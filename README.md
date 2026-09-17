@@ -299,7 +299,7 @@ A stuck server-side recording returns `409`. The extension recovers automaticall
 
 ## Skills (agent guides)
 
-The repo ships seven OpenCode **skills** (`ovi-*`) — concise operating guides for agents and contributors covering the product, plugin, server, extension, models, debugging and the dev/release loop. They live in `voice-opencode-plugin/.opencode/skills/<name>/SKILL.md` and are **versioned** (the rest of `.opencode/` is generated and git-ignored).
+The repo ships nine OpenCode **skills** (`ovi-*`) — concise operating guides for agents and contributors covering the product, plugin, server, extension, models, audio, security, debugging and the dev/release loop. They live in `voice-opencode-plugin/.opencode/skills/<name>/SKILL.md` and are **versioned** (the rest of `.opencode/` is generated and git-ignored).
 
 To let OpenCode discover them, point your config at the folder — or put the skills in `<project>/.opencode/skills` and start OpenCode from the project root:
 
