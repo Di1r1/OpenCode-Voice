@@ -137,6 +137,31 @@ def whispercpp_available() -> bool:
     return os.path.exists(WHISPER_CPP_BIN) and os.path.exists(WHISPER_CPP_MODEL)
 
 
+def _is_wav(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+        return head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+    except Exception:
+        return False
+
+
+def _to_wav(path: str):
+    """Конвертация в 16 кГц моно WAV через ffmpeg. Возвращает (путь, временный?)."""
+    if _is_wav(path) or not shutil.which("ffmpeg"):
+        return path, False
+    out = tempfile.mktemp(suffix=".wav")
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", path,
+         "-ar", str(SAMPLE_RATE), "-ac", "1", out],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0 or not os.path.exists(out):
+        logger.warning(f"ffmpeg convert failed: {(proc.stderr or '').strip()[:200]}")
+        return path, False
+    return out, True
+
+
 def _transcribe_whispercpp(path: str) -> dict:
     lang = LANGUAGE or "auto"
     env = dict(os.environ)
@@ -144,15 +169,25 @@ def _transcribe_whispercpp(path: str) -> dict:
     if env.get("LD_LIBRARY_PATH"):
         libs = f"{libs}:{env['LD_LIBRARY_PATH']}"
     env["LD_LIBRARY_PATH"] = libs
-    cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", path, "-l", lang, "-nt", "-np"]
-    logger.info(f"whisper.cpp -> {' '.join(cmd)}")
-    start = time.time()
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=180)
-    if proc.returncode != 0:
-        raise RuntimeError(f"whisper.cpp failed: {(proc.stderr or '').strip()[:300]}")
-    text = proc.stdout.strip()
-    logger.info(f"Transcribed via whisper.cpp ({lang}, {time.time() - start:.1f}s): {text[:120]}")
-    return {"text": text, "language": lang, "language_probability": 1.0}
+    # whisper.cpp/miniaudio не читает WebM/Opus (это путь браузерного микрофона),
+    # поэтому не-WAV вход конвертируем через ffmpeg.
+    audio, is_temp = _to_wav(path)
+    try:
+        cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", audio, "-l", lang, "-nt", "-np"]
+        logger.info(f"whisper.cpp -> {' '.join(cmd)}")
+        start = time.time()
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=180)
+        if proc.returncode != 0:
+            raise RuntimeError(f"whisper.cpp failed: {(proc.stderr or '').strip()[:300]}")
+        text = proc.stdout.strip()
+        logger.info(f"Transcribed via whisper.cpp ({lang}, {time.time() - start:.1f}s): {text[:120]}")
+        return {"text": text, "language": lang, "language_probability": 1.0}
+    finally:
+        if is_temp:
+            try:
+                os.unlink(audio)
+            except Exception:
+                pass
 
 
 def transcribe_file(path: str) -> dict:
