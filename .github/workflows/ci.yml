@@ -23,6 +23,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
       - name: Generate .opencode/plugins/index.ts and verify it is deterministic
         run: bash sync-plugin.sh && bash sync-plugin.sh --check
 

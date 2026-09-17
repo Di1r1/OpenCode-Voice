@@ -143,7 +143,8 @@ curl -s 127.0.0.1:8765/health
 # tests (no microphone/model needed)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 30 tests
+python3 -m pytest          # 30 server tests
+npm test                   # 12 tests (stripNonSpeech)
 npm run typecheck
 bash sync-plugin.sh --check
 ```
@@ -341,6 +342,7 @@ npm install
 bash sync-plugin.sh            # after every change to src/index.ts
 npm run typecheck
 python3 -m pytest              # server tests (hermetic: no mic, no model)
+npm test                       # TS tests (stripNonSpeech, node:test)
 bash sync-plugin.sh --check    # CI guard: entry points are up to date
 ```
 

@@ -143,7 +143,8 @@ curl -s 127.0.0.1:8765/health
 # тесты (микрофон и модель не нужны)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 30 тестов
+python3 -m pytest          # 30 тестов сервера
+npm test                   # 12 тестов (stripNonSpeech)
 npm run typecheck
 bash sync-plugin.sh --check
 ```
@@ -341,6 +342,7 @@ npm install
 bash sync-plugin.sh            # после каждой правки src/index.ts
 npm run typecheck
 python3 -m pytest              # тесты сервера (герметично: без микрофона и модели)
+npm test                       # TS-тесты (stripNonSpeech, node:test)
 bash sync-plugin.sh --check    # защита CI: entry-точки актуальны
 ```
 

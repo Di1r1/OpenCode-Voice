@@ -25,7 +25,8 @@
   "scripts": {
     "dev": "opencode --plugin .",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.0.0",

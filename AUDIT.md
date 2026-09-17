@@ -22,11 +22,11 @@
 - ✅ Проверка версий/зависимостей при старте сервера (`_runtime_checks`, `_cuda_driver_version`): Python, наличие whisper.cpp CLI/модели, CUDA-драйвер и версия, рекордер (arecord/ffmpeg/sox), доступность `PULSE_SERVER`. Понятные `WARNING`. `/health` отдаёт `python` и `auth`. — `stt_server.py`
 
 ### 4. CI и автотесты
-- ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `sync-plugin.sh --check` → `py_compile` → `pytest`.
+- ✅ GitHub Actions `.github/workflows/ci.yml`: `npm ci` → `tsc --noEmit` → `npm test` → `sync-plugin.sh --check` → `py_compile` → `pytest`.
 - ✅ Герметичные pytest-тесты (`stt-server/tests/test_server.py`, **30 шт.**): `/health` (backend/python/auth), CORS (allow/deny + `X-Voice-Source`), токен (off/401/200/health-exempt), `/beep` (freq=0 и мусорный freq), `/transcribe` (успех/без файла/ошибка), `/record/*` через `OPENCODE_VOICE_FAKE_AUDIO`, `_runtime_checks`/`_cuda_driver_version`, порог тишины (`_wav_levels`/`_is_silent`), анти-галлюцинационные флаги, `_wav_duration`, тег `source=` в логе распознавания и экранирование текста. Микрофон и модель не нужны.
 - ✅ Побочный фикс: `/health` теперь отдаёт эффективный `backend` и при запуске не через `main()`.
 - ✅ Порог тишины + анти-галлюцинации: на тишине/шуме Whisper не запускается (`OPENCODE_VOICE_SILENCE_PEAK/_RMS`); whisper.cpp работает с `-mc 0 -sns`. Плагин и сервер. — коммит `90ca852`
-- ⬜ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python) — покрыто только серверное поведение.
+- ✅ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python): Python — в `test_server.py`, TS — `test/strip-nonspeech.test.mjs` (12 кейсов, `npm test`, шаг в CI). Логика TS вынесена в `src/lib/text.ts` без зависимостей.
 
 ### 5. Дублирование логики TS ↔ Python
 - ⬜ Выбор бэкенда, дефолты моделей и `stripNonSpeech` реализованы дважды (`src/lib/stt.ts` и `stt-server/stt_server.py`) и уже рассинхронизировались. Решение: один источник истины (плагин ходит в сервер, либо общий формат/генерация).
@@ -69,6 +69,7 @@
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
 - `python3 -m pytest` (**30 тестов**, герметично) — OK
+- `npm test` (**12 тестов** `stripNonSpeech`) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог
