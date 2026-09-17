@@ -66,8 +66,25 @@ def test_health(client):
     body = r.get_json()
     assert body["status"] == "ok"
     assert body["backend"]
-    assert body["recorder"]
     assert "model" in body
+    # Recorder depends on the host: arecord/ffmpeg/sox or None in a bare CI image.
+    assert "recorder" in body
+    if body["recorder"] is not None:
+        assert body["recorder"] in {"arecord", "ffmpeg", "sox"}
+
+
+@pytest.mark.parametrize(
+    "present,expected",
+    [
+        ({}, None),
+        ({"arecord": "/usr/bin/arecord"}, "arecord"),
+        ({"ffmpeg": "/usr/bin/ffmpeg", "sox": "/usr/bin/sox"}, "ffmpeg"),
+        ({"sox": "/usr/bin/sox"}, "sox"),
+    ],
+)
+def test_record_probe_cmd(monkeypatch, present, expected):
+    monkeypatch.setattr(srv.shutil, "which", lambda name: present.get(name))
+    assert srv._record_probe_cmd() == expected
 
 
 def test_cors_allows_local_origin(client):
