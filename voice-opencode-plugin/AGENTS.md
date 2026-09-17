@@ -16,6 +16,7 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 - `/voice backend [local|api]` - View/switch STT backend.
 - `/voice lang [ru|en|auto]` - View/change recognition language.
 - `/voice device [auto|gpu|cpu]` - View/change local device (GPU whisper.cpp / CPU faster-whisper).
+- `/voice doctor [--fix]` - Runs `doctor.sh` (server process/port/health, CORS for `X-Voice-Source`, stuck recording, mic probe with delivery ratio, log freshness) and shows the tail in the prompt. `--fix` also repairs: restarts the server via the watchdog, clears a stuck recording (`POST /record/stop`), runs `fix-mic.sh`. Use it when the extension button shows `Failed to fetch` / 401 / 409.
 
 ## Development & Testing
 

@@ -134,6 +134,7 @@ opencode web --hostname 0.0.0.0
 | `/voice backend [local\|api]` | Показать/сменить STT-бэкенд |
 | `/voice lang [ru\|en\|auto]` | Показать/сменить язык |
 | `/voice device [auto\|gpu\|cpu]` | Показать/сменить устройство: GPU (whisper.cpp) или CPU (faster-whisper) |
+| `/voice doctor [--fix]` | Диагностика пути «кнопка/расширение» (сервер, CORS, зависшая запись, микрофон) с авторемонтом по `--fix` |
 
 TUI: хоткей `<leader>v` (лидер по умолчанию `ctrl+x`) запускает push-to-talk.
 

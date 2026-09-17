@@ -134,6 +134,7 @@ Optional: an in-UI 🎤 button for the OpenCode prompt is provided by `.opencode
 | `/voice backend [local\|api]` | Show/switch the STT backend |
 | `/voice lang [ru\|en\|auto]` | Show/switch the language |
 | `/voice device [auto\|gpu\|cpu]` | Show/switch local device: GPU (whisper.cpp) or CPU (faster-whisper) |
+| `/voice doctor [--fix]` | Diagnose the button/extension path (server, CORS, stuck recording, mic) and optionally auto-repair |
 
 TUI: the `<leader>v` hotkey (leader is `ctrl+x` by default) triggers push-to-talk.
 

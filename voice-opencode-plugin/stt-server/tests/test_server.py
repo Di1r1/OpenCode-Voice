@@ -48,6 +48,8 @@ def client():
 def _reset_state(monkeypatch):
     """No stray recorders/timers and no 5-minute delete timers during tests."""
     monkeypatch.setattr(srv, "RETAIN_SECONDS", 0.0)
+    # Never write into the real recognized-text log from tests.
+    monkeypatch.setenv("OPENCODE_VOICE_RECOGNIZED_LOG", "/dev/null")
     srv._rec_proc = None
     srv._rec_file = None
     srv._cancel_watchdog()

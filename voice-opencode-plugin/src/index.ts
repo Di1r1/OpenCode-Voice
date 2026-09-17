@@ -142,6 +142,39 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
+      // /voice doctor [--fix] — диагностика/ремонт кнопки и микрофона
+      if (sub === "doctor" || sub === "diag" || sub === "check") {
+        const fs = await import("node:fs")
+        const path = await import("node:path")
+        const candidates = [
+          path.join(directory, "voice-opencode-plugin", "doctor.sh"),
+          path.join(directory, "doctor.sh"),
+          path.join(directory, ".opencode", "plugins", "doctor.sh"),
+        ]
+        const script = candidates.find((p) => fs.existsSync(p))
+        if (!script) {
+          showToast("doctor.sh не найден", "error")
+          setParts(svc("doctor.sh не найден рядом с плагином"))
+          return
+        }
+        const fix = parts.includes("--fix") || parts.includes("fix")
+        showToast("🩺 Проверяю…")
+        try {
+          const out = fix
+            ? await $`bash ${script} --fix`.text()
+            : await $`bash ${script}`.text()
+          const tail = out.trim().split("\n").slice(-14).join("\n")
+          await log("doctor", { fix })
+          setParts(svc(`диагностика (${fix ? "с ремонтом" : "только чтение"}):\n${tail}`))
+          showToast("🩺 Готово — смотри поле ввода", "success")
+        } catch (e: any) {
+          await log("doctor failed", { error: e?.message || String(e) })
+          setParts(svc(`ошибка doctor: ${e?.message || e}`))
+          showToast(`Ошибка doctor: ${e?.message || e}`, "error")
+        }
+        return
+      }
+
       // /voice help — список возможностей
       if (sub === "help" || sub === "-h" || sub === "--help") {
         const helpText =
@@ -150,6 +183,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           "• /voice backend [local|api]\n" +
           "• /voice lang [ru|en|auto]\n" +
           "• /voice device [auto|gpu|cpu]\n" +
+          "• /voice doctor [--fix] — диагностика кнопки/микрофона\n" +
           "• /voice <файл.wav|mp3|m4a|ogg|flac>"
         showToast(helpText)
         setParts(svc(helpText))
