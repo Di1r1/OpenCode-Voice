@@ -2,15 +2,20 @@
  * Запись микрофона (push-to-talk).
  *
  * Схема: startPushToTalk() запускает детачированный рекордер и возвращает сессию,
- * waitPushToTalkEnd() ждёт его завершения. (Хуки opencode выполняются строго
- * последовательно, поэтому остановка по второй команде невозможна — запись идёт
- * фиксированное окно maxSeconds.)
+ * waitPushToTalkAuto() ждёт конца речи (по тишине) и мягко останавливает рекордер
+ * (SIGINT, чтобы arecord успел финализировать WAV-заголовок). (Хуки opencode
+ * выполняются строго последовательно, поэтому остановка по второй команде
+ * невозможна.)
+ *
+ * В WSLg/RDP источник отдаёт сэмплы медленнее реального времени, поэтому
+ * waitPushToTalkAuto ориентируется на длительность записанного аудио, а не на
+ * настенное время.
  *
  * Бэкенд: arecord (в WSL самый надёжный — PulseAudio), иначе ffmpeg.
  */
 
 import { spawn } from "node:child_process"
-import { mkdirSync, statSync } from "node:fs"
+import { closeSync, mkdirSync, openSync, readSync, statSync } from "node:fs"
 
 export interface PttOptions {
   sampleRate?: number
@@ -88,7 +93,8 @@ async function which($: any, cmd: string): Promise<string | null> {
 export async function startPushToTalk($: any, opts: PttOptions = {}): Promise<PttSession> {
   const sr = opts.sampleRate || SAMPLE_RATE
   const ch = opts.channels || CHANNELS
-  const max = opts.maxSeconds || 30
+  // Жёсткий предел записи; обычно срабатывает авто-стоп по тишине раньше.
+  const max = opts.maxSeconds || 60
   const file = `${recordingDir()}/voice-ptt-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`
   scheduleDelete(file)
 
@@ -130,14 +136,139 @@ function isAlive(pid: number): boolean {
   }
 }
 
-/** Ждёт завершения рекордера; по истечении maxMs — убивает (SIGKILL). */
+// Порог тишины (RMS) для авто-стопа; должен совпадать с OPENCODE_VOICE_SILENCE_RMS.
+const SILENCE_RMS = Number(process.env.OPENCODE_VOICE_SILENCE_RMS || 80)
+
+/** Длительность и RMS последних ~0.4 c WAV (PCM16). */
+function wavTail(file: string): { durMs: number; rms: number } | null {
+  try {
+    const size = statSync(file).size
+    if (size < 44) return null
+    const fd = openSync(file, "r")
+    try {
+      const head = Buffer.alloc(64)
+      readSync(fd, head, 0, 64, 0)
+      if (head.toString("ascii", 0, 4) !== "RIFF") return null
+      let pos = 12
+      let dataOff = -1
+      let dataLen = 0
+      let bytesPerSec = SAMPLE_RATE * CHANNELS * 2
+      while (pos + 8 <= 64) {
+        const id = head.toString("ascii", pos, pos + 4)
+        const sz = head.readUInt32LE(pos + 4)
+        if (id === "fmt ") {
+          const ch = head.readUInt16LE(pos + 10)
+          const sr = head.readUInt32LE(pos + 12)
+          const bits = head.readUInt16LE(pos + 22)
+          if (ch > 0 && sr > 0 && bits > 0) bytesPerSec = ch * sr * (bits / 8)
+        }
+        if (id === "data") {
+          dataOff = pos + 8
+          // Заголовок может врать (обрыв записи) — берём реальный размер файла.
+          dataLen = Math.min(sz, size - dataOff)
+          break
+        }
+        pos += 8 + sz + (sz % 2)
+      }
+      if (dataOff < 0 || dataLen <= 0) return null
+      const durMs = (dataLen / bytesPerSec) * 1000
+      const win = Math.min(dataLen, Math.max(2, Math.round((bytesPerSec * 0.4) / 2) * 2))
+      const buf = Buffer.alloc(win)
+      readSync(fd, buf, 0, win, dataOff + dataLen - win)
+      let sum = 0
+      let n = 0
+      for (let i = 0; i + 1 < win; i += 2) {
+        const v = buf.readInt16LE(i)
+        sum += v * v
+        n++
+      }
+      return { durMs, rms: n ? Math.sqrt(sum / n) : 0 }
+    } finally {
+      closeSync(fd)
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Мягко останавливает рекордер: SIGINT (arecord финализирует WAV), затем SIGKILL. */
+async function stopGracefully(pid: number): Promise<void> {
+  try { process.kill(pid, "SIGINT") } catch { return }
+  const t = Date.now()
+  while (isAlive(pid) && Date.now() - t < 2500) await sleep(100)
+  if (isAlive(pid)) {
+    try { process.kill(pid, "SIGKILL") } catch {}
+  }
+}
+
+/** Ждёт завершения рекордера; по истечении maxMs — мягко останавливает. */
 export async function waitPushToTalkEnd(session: PttSession, maxMs: number): Promise<void> {
   const start = Date.now()
   while (Date.now() - start < maxMs) {
     if (!isAlive(session.pid)) return
-    await new Promise((r) => setTimeout(r, 150))
+    await sleep(150)
   }
-  try { process.kill(session.pid, "SIGKILL") } catch {}
+  await stopGracefully(session.pid)
+}
+
+export interface AutoStopOptions {
+  /** Жёсткий предел записанного аудио, с. */
+  maxAudioSeconds?: number
+  /** Сколько тишины считать концом речи, мс. */
+  silenceMs?: number
+  /** Минимальная длина аудио для срабатывания авто-стопа, мс. */
+  minAudioMs?: number
+  pollMs?: number
+}
+
+export interface PttEndInfo {
+  reason: "ended" | "silence" | "maxAudio" | "wall"
+  audioMs: number
+}
+
+/**
+ * Ждёт конца речи: останавливает запись, когда после голоса идёт тишина
+ * (silenceMs), либо по достижении лимита аудио/времени. Остановка мягкая.
+ */
+export async function waitPushToTalkAuto(session: PttSession, opts: AutoStopOptions = {}): Promise<PttEndInfo> {
+  const maxAudioMs = (opts.maxAudioSeconds ?? 60) * 1000
+  const silenceMs = opts.silenceMs ?? 1500
+  const minAudioMs = opts.minAudioMs ?? 1200
+  const pollMs = opts.pollMs ?? 200
+  // RDP отдаёт ~0.38x realtime — запас по настенному времени щедрый.
+  const wallLimit = maxAudioMs * 4 + 20000
+
+  const t0 = Date.now()
+  let lastVoiceAt = 0
+  let sawVoice = false
+  let durMs = 0
+
+  while (true) {
+    if (!isAlive(session.pid)) return { reason: "ended", audioMs: durMs }
+
+    const w = wavTail(session.file)
+    if (w) {
+      durMs = w.durMs
+      if (w.rms >= SILENCE_RMS * 2) {
+        sawVoice = true
+        lastVoiceAt = Date.now()
+      }
+      if (durMs >= maxAudioMs) {
+        await stopGracefully(session.pid)
+        return { reason: "maxAudio", audioMs: durMs }
+      }
+      if (sawVoice && durMs >= minAudioMs && Date.now() - lastVoiceAt >= silenceMs) {
+        await stopGracefully(session.pid)
+        return { reason: "silence", audioMs: durMs }
+      }
+    }
+
+    if (Date.now() - t0 > wallLimit) {
+      await stopGracefully(session.pid)
+      return { reason: "wall", audioMs: durMs }
+    }
+    await sleep(pollMs)
+  }
 }
 
 export function pttFileSize(file: string): number {

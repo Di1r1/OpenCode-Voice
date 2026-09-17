@@ -272,3 +272,73 @@ def test_whispercpp_antihallucination_flags(tmp_path, monkeypatch):
     assert srv._transcribe_whispercpp(str(tone))["text"] == "привет"
     assert "-mc" in captured["cmd"] and "0" in captured["cmd"]
     assert "-sns" in captured["cmd"]
+
+
+# ---------------------------------------------------------------------------
+# Recognized-text log (source tagging: button vs api)
+# ---------------------------------------------------------------------------
+
+def _fake_result(text, lang="ru"):
+    return {"text": text, "language": lang, "language_probability": 1.0,
+            "backend": "whispercpp", "model": "ggml-medium.bin", "duration": 1.5}
+
+
+def test_recognized_log_tags_button(client, monkeypatch, tmp_path):
+    log = tmp_path / "recognized.log"
+    monkeypatch.setenv("OPENCODE_VOICE_RECOGNIZED_LOG", str(log))
+    monkeypatch.setattr(srv, "transcribe_file", lambda path: _fake_result("привет мир"))
+    r = client.post(
+        "/transcribe",
+        data={"audio": (make_wav(0.2), "t.wav")},
+        content_type="multipart/form-data",
+        headers={"X-Voice-Source": "button"},
+    )
+    assert r.status_code == 200
+    line = log.read_text()
+    assert "source=button" in line
+    assert "backend=whispercpp" in line
+    assert "model=ggml-medium.bin" in line
+    assert 'dur=1.50s' in line
+    assert 'text="привет мир"' in line
+
+
+def test_recognized_log_defaults_to_api(client, monkeypatch, tmp_path):
+    log = tmp_path / "recognized.log"
+    monkeypatch.setenv("OPENCODE_VOICE_RECOGNIZED_LOG", str(log))
+    monkeypatch.setattr(srv, "transcribe_file", lambda path: _fake_result("hi", "en"))
+    client.post(
+        "/transcribe",
+        data={"audio": (make_wav(0.2), "t.wav")},
+        content_type="multipart/form-data",
+    )
+    assert "source=api" in log.read_text()
+
+
+def test_recognized_log_escapes_quotes_and_newlines(client, monkeypatch, tmp_path):
+    log = tmp_path / "recognized.log"
+    monkeypatch.setenv("OPENCODE_VOICE_RECOGNIZED_LOG", str(log))
+    monkeypatch.setattr(srv, "transcribe_file", lambda path: _fake_result('a "b"\nc', "en"))
+    client.post(
+        "/transcribe",
+        data={"audio": (make_wav(0.2), "t.wav")},
+        content_type="multipart/form-data",
+    )
+    content = log.read_text()
+    assert 'text="a \\"b\\" c"' in content
+    assert content.count("\n") == 1
+
+
+def test_wav_duration(tmp_path):
+    good = tmp_path / "good.wav"
+    good.write_bytes(make_wav(0.5).read())
+    assert abs(srv._wav_duration(str(good)) - 0.5) < 0.05
+    assert srv._wav_duration(str(tmp_path / "missing.wav")) == 0.0
+
+
+def test_cors_allows_voice_source_header(client):
+    r = client.options(
+        "/transcribe",
+        headers={"Origin": "http://127.0.0.1:4096",
+                 "Access-Control-Request-Headers": "X-Voice-Source"},
+    )
+    assert "X-Voice-Source" in r.headers.get("Access-Control-Allow-Headers", "")

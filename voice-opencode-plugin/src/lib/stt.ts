@@ -28,7 +28,7 @@ function note(backend: string, info: string): void {
 const SILENCE_PEAK = Number(process.env.OPENCODE_VOICE_SILENCE_PEAK || 700)
 const SILENCE_RMS = Number(process.env.OPENCODE_VOICE_SILENCE_RMS || 80)
 
-function wavLevels(file: string): { peak: number; rms: number } | null {
+function wavInfo(file: string): { peak: number; rms: number; durSec: number } | null {
   try {
     const buf = readFileSync(file)
     if (buf.length < 44 || buf.toString("ascii", 0, 4) !== "RIFF") return null
@@ -36,10 +36,16 @@ function wavLevels(file: string): { peak: number; rms: number } | null {
     let dataOff = -1
     let dataLen = 0
     let bits = 16
+    let bytesPerSec = 32000
     while (pos + 8 <= buf.length) {
       const id = buf.toString("ascii", pos, pos + 4)
       const size = buf.readUInt32LE(pos + 4)
-      if (id === "fmt ") bits = buf.readUInt16LE(pos + 22)
+      if (id === "fmt ") {
+        bits = buf.readUInt16LE(pos + 22)
+        const ch = buf.readUInt16LE(pos + 10)
+        const sr = buf.readUInt32LE(pos + 12)
+        if (ch > 0 && sr > 0 && bits > 0) bytesPerSec = ch * sr * (bits / 8)
+      }
       if (id === "data") {
         dataOff = pos + 8
         dataLen = Math.min(size, buf.length - dataOff)
@@ -58,10 +64,14 @@ function wavLevels(file: string): { peak: number; rms: number } | null {
       sum += v * v
       n++
     }
-    return { peak, rms: n ? Math.sqrt(sum / n) : 0 }
+    return { peak, rms: n ? Math.sqrt(sum / n) : 0, durSec: dataLen / bytesPerSec }
   } catch {
     return null
   }
+}
+
+function wavLevels(file: string): { peak: number; rms: number } | null {
+  return wavInfo(file)
 }
 
 function isSilentWav(file: string): boolean {
@@ -70,6 +80,30 @@ function isSilentWav(file: string): boolean {
   const silent = lv.peak < SILENCE_PEAK && lv.rms < SILENCE_RMS
   note("levels", `peak=${lv.peak.toFixed(0)} rms=${lv.rms.toFixed(0)} silent=${silent}`)
   return silent
+}
+
+// Какой бэкенд/модель реально отработали (для unified-лога).
+let lastBackend = ""
+let lastModel = ""
+
+/**
+ * Единый лог распознанного текста: видно, откуда пришёл текст (source=command|button|api).
+ * Файл: OPENCODE_VOICE_RECOGNIZED_LOG или /tmp/opencode/voice-recognized.log.
+ */
+export function logRecognized(source: string, text: string, language: string, file: string): void {
+  try {
+    const info = wavInfo(file)
+    const dur = info ? info.durSec.toFixed(2) : "0.00"
+    const esc = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ")
+    const logPath = process.env.OPENCODE_VOICE_RECOGNIZED_LOG || "/tmp/opencode/voice-recognized.log"
+    appendFileSync(
+      logPath,
+      `${new Date().toISOString()} source=${source} backend=${lastBackend || "?"} model=${lastModel || "?"} ` +
+        `lang=${language} dur=${dur}s text="${esc}"\n`,
+    )
+  } catch {
+    // логирование best-effort
+  }
 }
 
 // Служебные пометки Whisper на музыке/шуме: [музыка], (смех), ♪, *music* и т.п.
@@ -128,15 +162,18 @@ export interface TranscribeOptions {
   $: any
   /** auto (по умолчанию) | gpu | cpu. auto: GPU, при неудаче/отсутствии — CPU. */
   device?: string
+  /** Откуда пришёл текст: command (/voice) или button (расширение). */
+  source?: string
 }
 
 export async function transcribe(opts: TranscribeOptions): Promise<string> {
-  const { backend, language, file, $, device } = opts
+  const { backend, language, file, $, device, source } = opts
 
-  if (backend === "api") {
-    return transcribeApi({ file, language, $ })
-  }
-  return transcribeLocal({ file, language, device, $ })
+  const text = backend === "api"
+    ? await transcribeApi({ file, language, $ })
+    : await transcribeLocal({ file, language, device, $ })
+  logRecognized(source || "command", text, language, file)
+  return text
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +195,8 @@ async function transcribeApi(opts: { file: string; language: string; $: any }): 
 
   const { OpenAI } = await import("openai")
   const openai = new OpenAI({ apiKey: config.openaiApiKey })
+  lastBackend = "openai"
+  lastModel = config.whisperModel
 
   const fs = await import("node:fs/promises")
   const path = await import("node:path")
@@ -290,6 +329,8 @@ async function hasVosk($: any): Promise<boolean> {
 async function transcribeFasterWhisper(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
   const modelSize = process.env.WHISPER_MODEL || "medium"
+  lastBackend = "faster-whisper"
+  lastModel = modelSize
   note("faster-whisper", `${modelSize} ${file}`)
   // Python ждёт None, а не null — поэтому маппим auto -> None явно.
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
@@ -327,6 +368,8 @@ print("".join(s.text for s in segments))
 async function transcribeWhisperCpp(opts: { file: string; language: string; $: any; cli: string; model?: string }): Promise<string> {
   const { file, language, $, cli } = opts
   const model = opts.model || process.env.WHISPER_MODEL_PATH || WHISPER_CPP_MODEL
+  lastBackend = "whispercpp"
+  lastModel = path.basename(model)
   note("whispercpp", `${cli} ${model}`)
   const lang = language && language !== "auto" ? language : "auto"
   // CUDA-рантайм + драйвер WSL должны быть в LD_LIBRARY_PATH.
@@ -345,6 +388,8 @@ async function transcribePythonWhisper(opts: { file: string; language: string; $
   const { file, language, $ } = opts
   const langPy = language === "auto" ? "None" : JSON.stringify(language)
   const modelSize = process.env.WHISPER_MODEL || "medium"
+  lastBackend = "python-whisper"
+  lastModel = modelSize
   const code = `
 import whisper, sys, json
 model = whisper.load_model(${JSON.stringify(modelSize)})
@@ -358,6 +403,8 @@ print(res["text"])
 async function transcribeVosk(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
   const modelPath = process.env.VOSK_MODEL_PATH || "./model"
+  lastBackend = "vosk"
+  lastModel = modelPath
   const code = `
 import json, sys
 from vosk import Model, KaldiRecognizer

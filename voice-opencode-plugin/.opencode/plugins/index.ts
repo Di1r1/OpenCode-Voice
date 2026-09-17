@@ -169,6 +169,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
             device: state.device,
             file: resolved,
             $,
+            source: "command-file",
           })
           const text = stripNonSpeech(raw)
           append(text)
@@ -192,9 +193,10 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const { beep } = await import("../../src/lib/beep")
         const recordOnce = async () => {
           await beep($, 880, 120)
-          const s = await rec.startPushToTalk($, { maxSeconds: 30 })
-          await rec.waitPushToTalkEnd(s, 35000)
+          const s = await rec.startPushToTalk($, { maxSeconds: 60 })
+          const info = await rec.waitPushToTalkAuto(s, { maxAudioSeconds: 60 })
           await beep($, 520, 140)
+          await log("ptt recorded", { reason: info.reason, audioMs: Math.round(info.audioMs) })
           return s
         }
 
@@ -220,6 +222,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
             device: state.device,
             file: session.file,
             $,
+            source: "command",
           })
         } catch (e: any) {
           await log("ptt transcribe failed", { error: e?.message || String(e) })

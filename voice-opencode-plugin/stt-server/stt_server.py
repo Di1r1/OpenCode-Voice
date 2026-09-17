@@ -51,7 +51,7 @@ def _cors(resp):
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Vary"] = "Origin"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Voice-Token, Authorization"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Voice-Token, Authorization, X-Voice-Source"
     return resp
 
 
@@ -371,6 +371,35 @@ def _is_silent(path: str) -> bool:
     return silent
 
 
+def _wav_duration(path: str) -> float:
+    """Длительность WAV в секундах (0.0, если не удалось)."""
+    try:
+        with wave.open(path, "rb") as w:
+            rate = w.getframerate() or 1
+            return w.getnframes() / rate
+    except Exception:
+        return 0.0
+
+
+def _log_recognized(source: str, result: dict, path: str):
+    """Единый лог распознанного текста: видно, откуда пришёл текст (source=button|api|...)."""
+    try:
+        text = str(result.get("text", ""))
+        esc = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        dur = result.get("duration")
+        if dur is None:
+            dur = _wav_duration(path)
+        log_file = os.getenv("OPENCODE_VOICE_RECOGNIZED_LOG", "/tmp/opencode/voice-recognized.log")
+        with open(log_file, "a") as f:
+            f.write(
+                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} source={source} "
+                f"backend={result.get('backend', '?')} model={result.get('model', '?')} "
+                f"lang={result.get('language', '?')} dur={float(dur):.2f}s text=\"{esc}\"\n"
+            )
+    except Exception:
+        pass
+
+
 def _transcribe_whispercpp(path: str) -> dict:
     lang = LANGUAGE or "auto"
     env = dict(os.environ)
@@ -382,9 +411,11 @@ def _transcribe_whispercpp(path: str) -> dict:
     # поэтому не-WAV вход конвертируем через ffmpeg.
     audio, is_temp = _to_wav(path)
     try:
+        meta = {"backend": "whispercpp", "model": os.path.basename(WHISPER_CPP_MODEL),
+                "duration": _wav_duration(audio)}
         if _is_silent(audio):
             logger.info("Transcribed via whisper.cpp: речи нет (тишина) — пропускаю")
-            return {"text": "", "language": lang, "language_probability": 1.0}
+            return {"text": "", "language": lang, "language_probability": 1.0, **meta}
         # -mc 0 (без переноса контекста) и -sns (без не-речевых токенов) снижают галлюцинации.
         cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", audio, "-l", lang,
                "-nt", "-np", "-mc", "0", "-sns"]
@@ -395,7 +426,7 @@ def _transcribe_whispercpp(path: str) -> dict:
             raise RuntimeError(f"whisper.cpp failed: {(proc.stderr or '').strip()[:300]}")
         text = _strip_non_speech(proc.stdout.strip())
         logger.info(f"Transcribed via whisper.cpp ({lang}, {time.time() - start:.1f}s): {text[:120]}")
-        return {"text": text, "language": lang, "language_probability": 1.0}
+        return {"text": text, "language": lang, "language_probability": 1.0, **meta}
     finally:
         if is_temp:
             try:
@@ -445,7 +476,8 @@ def _ensure_faster_whisper():
 def _transcribe_faster_whisper(path: str) -> dict:
     if _is_silent(path):
         logger.info("Transcribed: речи нет (тишина) — пропускаю")
-        return {"text": "", "language": LANGUAGE or "auto", "language_probability": 0.0}
+        return {"text": "", "language": LANGUAGE or "auto", "language_probability": 0.0,
+                "backend": "faster-whisper", "model": MODEL_SIZE, "duration": _wav_duration(path)}
     segments, info = model.transcribe(
         path,
         language=LANGUAGE,          # None → авто, либо ru/en из env
@@ -460,7 +492,8 @@ def _transcribe_faster_whisper(path: str) -> dict:
     )
     text = _strip_non_speech(" ".join(seg.text for seg in segments).strip())
     logger.info(f"Transcribed ({info.language}, {info.language_probability:.2f}): {text[:120]}")
-    return {"text": text, "language": info.language, "language_probability": info.language_probability}
+    return {"text": text, "language": info.language, "language_probability": info.language_probability,
+            "backend": "faster-whisper", "model": MODEL_SIZE, "duration": _wav_duration(path)}
 
 
 # ---------------------------------------------------------------------------
@@ -825,8 +858,10 @@ def record_stop():
         _schedule_delete(path)
         return jsonify({"text": "", "warning": "recording too short"})
 
+    source = request.headers.get("X-Voice-Source", "button")
     try:
         result = transcribe_file(path)
+        _log_recognized(source, result, path)
         return jsonify(result)
     except Exception as e:
         logger.exception("Transcription failed")
@@ -900,8 +935,11 @@ def transcribe():
         tmp_path = tmp.name
     _keep_audio(tmp_path, "upload")
 
+    source = request.headers.get("X-Voice-Source", "api")
     try:
-        return jsonify(transcribe_file(tmp_path))
+        result = transcribe_file(tmp_path)
+        _log_recognized(source, result, tmp_path)
+        return jsonify(result)
     except Exception as e:
         logger.exception("Transcription failed")
         return jsonify({"error": str(e)}), 500

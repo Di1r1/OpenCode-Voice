@@ -193,7 +193,9 @@ const tokenReady = new Promise((resolve) => {
 });
 
 function authHeaders() {
-  return voiceToken ? { 'X-Voice-Token': voiceToken } : {};
+  const h = { 'X-Voice-Source': 'button' };
+  if (voiceToken) h['X-Voice-Token'] = voiceToken;
+  return h;
 }
 
 function beep(freq = 880) {
@@ -461,7 +463,7 @@ log('Content script loaded, waiting for UI...');
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.6 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.7 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
   } catch {}
 });
