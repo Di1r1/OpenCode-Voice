@@ -11,7 +11,6 @@ Voice input for [OpenCode](https://opencode.ai): speak, and your words land in t
 | `src/` | OpenCode plugin (TS): the `/voice` command, push-to-talk recording, STT backends |
 | `stt-server/` | Flask + faster-whisper: server-side recording via PulseAudio (WSL) and transcription |
 | `extension/` | Chrome extension (MV3): the 🎤 button in the web UI, hybrid recording (browser → server) |
-| `voice-button.user.js` | Extension alternative — a Tampermonkey userscript |
 | `sync-plugin.sh` | Prepares the local OpenCode plugin and TUI/web entry points |
 
 ## Requirements
@@ -119,10 +118,6 @@ opencode web --hostname 0.0.0.0
 The extension talks to the STT server at `http(s)://<host>:8765` (`STT_PORT` in `extension/content.js`). `extension/manifest.json` already lists `localhost`/`127.0.0.1`; if your host differs, add it to `host_permissions`.
 
 Optional: an in-UI 🎤 button for the OpenCode prompt is provided by the bundled TUI/web plugin — add it to the `plugin` list of your TUI config (`~/.config/opencode/tui.json`) to enable it.
-
-### 5. Userscript (deprecated)
-
-⚠️ `voice-button.user.js` is **deprecated** — it is kept for compatibility only and is not updated. Use the Chrome extension instead: the userscript talks to an older API, lacks RAM recording/beeps/settings, and uses the same button `id` as the extension (do not enable both).
 
 ## `/voice` commands
 
@@ -285,7 +280,6 @@ voice-opencode-plugin/
 ├── src/                     # plugin code (index.ts, lib/config.ts, lib/stt.ts, lib/recorder.ts)
 ├── stt-server/              # Flask server: stt_server.py, requirements*.txt, tests/, manual test script
 ├── extension/               # Chrome extension (MV3)
-├── voice-button.user.js     # userscript (deprecated)
 ├── fix-mic.sh               # recreate the WSLg audio channel (microphone fix)
 ├── sync-plugin.sh           # prepares the local plugin/TUI entry points (--check for CI)
 ├── opencode.json            # plugin wiring + agents
