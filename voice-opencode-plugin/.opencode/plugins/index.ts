@@ -21,7 +21,6 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
   const { config, STT_LANGUAGES, STT_DEVICES, DEFAULTS } = await import("../../src/lib/config")
-  const fs = await import("node:fs")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
@@ -41,17 +40,6 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
   void ensureSttServer(directory, log)
   startServerWatchdog(directory, log)
 
-  // Статус записи для TUI-плагина: он читает этот файл и рисует живой таймер
-  // (обновления prompt/тостов из этого хука TUI не отображает, пока хук выполняется).
-  const STATUS_FILE = "/tmp/opencode/voice-status.json"
-  const setStatus = (state: "recording" | "transcribing" | "idle", start = 0) => {
-    try {
-      fs.writeFileSync(STATUS_FILE, JSON.stringify({ state, start, max: 30 }))
-    } catch {
-      // индикатор best-effort
-    }
-  }
-
   const append = (text: string) => {
     if (!text) return
     try {
@@ -66,49 +54,6 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       client.tui.showToast({ body: { message, variant } })
     } catch {
       // Toast is best-effort
-    }
-  }
-
-  // Неблокирующий push-to-talk: запись идёт в фоне, повторный /voice её
-  // останавливает. Таймер рисует TUI-плагин по STATUS_FILE. Чтобы команда не
-  // отправила пустой запрос, обе ветки (старт/стоп) бросают исключение —
-  // тогда OpenCode промпт не вызывает.
-  let pttSession: { file: string; pid: number; backend: string } | null = null
-
-  const finishPtt = async (session: { file: string; pid: number; backend: string }) => {
-    const rec = await import("../../src/lib/recorder")
-    const { transcribe, stripNonSpeech } = await import("../../src/lib/stt")
-    const { beep } = await import("../../src/lib/beep")
-    try {
-      await rec.waitPushToTalkEnd(session, 35000)
-      setStatus("transcribing")
-      await beep($, 520, 140)
-      if (rec.pttFileSize(session.file) < 2000) {
-        await log("ptt no audio", { file: session.file })
-        showToast("❌ Микрофон молчит: запись пустая. Проверь аудиоканал (fix-mic.sh)", "error")
-        return
-      }
-      showToast("🧠 Распознаю речь…")
-      const raw = await transcribe({
-        backend: state.backend,
-        language: state.language,
-        device: state.device,
-        file: session.file,
-        $,
-      })
-      const text = stripNonSpeech(raw)
-      if (!text) {
-        showToast("🤷 Речь не распознана (только шум)", "error")
-        return
-      }
-      append(text)
-      showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
-    } catch (e: any) {
-      await log("ptt failed", { error: e?.message || String(e) })
-      showToast(`❌ Ошибка: ${e?.message || e}`, "error")
-    } finally {
-      setStatus("idle")
-      if (pttSession === session) pttSession = null
     }
   }
 
@@ -205,25 +150,63 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         return
       }
 
-      // /voice — неблокирующая запись: первый вызов стартует запись в фоне
-      // (TUI-плагин рисует таймер), повторный — останавливает и распознаёт.
-      // Обе ветки бросают исключение, чтобы OpenCode не отправил пустой запрос.
-      const rec = await import("../../src/lib/recorder")
-      const { beep } = await import("../../src/lib/beep")
+      // /voice — запись 30 секунд -> распознавание -> текст в поле ввода.
+      // При любой ошибке хук бросает исключение: иначе OpenCode отправит
+      // заглушку ("\n") и модель получит пустой запрос.
+      try {
+        const rec = await import("../../src/lib/recorder")
+        const { transcribe, stripNonSpeech } = await import("../../src/lib/stt")
 
-      if (pttSession) {
-        const session = pttSession
-        showToast("⏹ Останавливаю запись…")
-        rec.stopPushToTalk(session)
-        throw new Error("⏹ Останавливаю запись…")
+        const { beep } = await import("../../src/lib/beep")
+        const recordOnce = async () => {
+          await beep($, 880, 120)
+          const s = await rec.startPushToTalk($, { maxSeconds: 30 })
+          await rec.waitPushToTalkEnd(s, 35000)
+          await beep($, 520, 140)
+          return s
+        }
+
+        let session = await recordOnce()
+        if (rec.pttFileSize(session.file) < 2000) {
+          // Аудиоканал WSLg отвалился — один раз пересоздаём и пробуем снова.
+          await log("ptt no audio, recovering", { file: session.file })
+          showToast("🔄 Микрофон не отвечает — пересоздаю аудиоканал…")
+          await rec.recoverMic($)
+          session = await recordOnce()
+        }
+        if (rec.pttFileSize(session.file) < 2000) {
+          await log("ptt no audio", { file: session.file })
+          showToast("❌ Микрофон молчит: запись пустая. Проверь аудиоканал (fix-mic.sh)", "error")
+          throw new Error("ptt: пустая запись")
+        }
+        showToast("🧠 Распознаю речь…")
+        let raw: string
+        try {
+          raw = await transcribe({
+            backend: state.backend,
+            language: state.language,
+            device: state.device,
+            file: session.file,
+            $,
+          })
+        } catch (e: any) {
+          await log("ptt transcribe failed", { error: e?.message || String(e) })
+          showToast(`❌ Ошибка распознавания: ${e?.message || e}`, "error")
+          throw new Error("ptt: ошибка распознавания")
+        }
+        const text = stripNonSpeech(raw)
+        if (!text) {
+          showToast("🤷 Речь не распознана (только шум)", "error")
+          throw new Error("ptt: речь не распознана")
+        }
+        append(text)
+        output.parts.length = 0
+        output.parts.push({ type: "text", text } as any)
+        showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
+      } catch (e: any) {
+        await log("ptt aborted", { error: e?.message || String(e) })
+        throw e
       }
-
-      await beep($, 880, 120)
-      const session = await rec.startPushToTalk($, { maxSeconds: 30 })
-      pttSession = session
-      setStatus("recording", Date.now())
-      void finishPtt(session)
-      throw new Error("🎙 Запись идёт — нажми /voice ещё раз, чтобы остановить")
     },
   }
 
