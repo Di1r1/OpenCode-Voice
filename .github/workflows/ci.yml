@@ -52,6 +52,6 @@ jobs:
         working-directory: voice-opencode-plugin
         run: python -m pytest
 
-      - name: E2E: real server over HTTP with a stub whisper-cli
+      - name: "E2E: real server over HTTP with a stub whisper-cli"
         working-directory: voice-opencode-plugin
         run: node --experimental-strip-types --test test/e2e-server.test.mjs
