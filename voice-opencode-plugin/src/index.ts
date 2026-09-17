@@ -25,6 +25,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
     language: (config.sttLanguage || DEFAULTS.sttLanguage) as string,
   }
+  let pttActive = false
 
   const log = async (message: string, extra?: Record<string, unknown>) => {
     try {
@@ -132,7 +133,14 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       }
 
       // /voice — push-to-talk: запись микрофона -> распознавание -> вставка в prompt.
-      // recordPushToTalk возвращает путь к WAV, а не текст.
+      // Повторный /voice во время записи останавливает её.
+      if (pttActive) {
+        showToast("⏹ Останавливаю запись…")
+        const { stopPushToTalk } = await import("./lib/recorder")
+        await stopPushToTalk($)
+        return
+      }
+      pttActive = true
       showToast("🎙 Запись: 0 сек")
       try {
         const { recordPushToTalk } = await import("./lib/recorder")
@@ -164,6 +172,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         }
         await log("ptt failed", { error: e?.message || String(e) })
         showToast(`❌ Ошибка: ${e?.message || e}`, "error")
+      } finally {
+        pttActive = false
       }
     },
   }

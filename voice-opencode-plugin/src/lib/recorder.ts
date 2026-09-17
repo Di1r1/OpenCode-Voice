@@ -50,8 +50,17 @@ async function which($: any, cmd: string): Promise<string | null> {
   return null
 }
 
-export async function recordPushToTalk(options: PttOptions): Promise<string> {
-  const { $, maxSeconds = 30, onProgress } = options
+/** Мягко останавливает активную запись push-to-talk (SIGINT рекордеру). */
+export async function stopPushToTalk($: any): Promise<void> {
+  try {
+    // 'voice-ptt-[0-9]' не совпадает с собственной командой pkill (в ней нет цифры).
+    await $`pkill -INT -f 'voice-ptt-[0-9]'`.quiet()
+  } catch {
+    // нет активной записи — ничего страшного
+  }
+}
+
+export async function recordPushToTalk(options: PttOptions): Promise<string> {  const { $, maxSeconds = 30, onProgress } = options
   const sr = options.sampleRate || SAMPLE_RATE
   const ch = options.channels || CHANNELS
 
