@@ -19,7 +19,6 @@ import type { Plugin, Hooks } from "@opencode-ai/plugin"
  * как будто его напечатали вручную.
  */
 export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
-  console.log("[voice-plugin] Plugin loaded!")
   const { config, STT_LANGUAGES, DEFAULTS } = await import("./lib/config")
   const state = {
     backend: (config.sttBackend || DEFAULTS.sttBackend) as "local" | "api",
