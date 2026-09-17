@@ -3,10 +3,28 @@
   "version": "0.3.1",
   "description": "Voice control for OpenCode: speak, and your words are typed into the prompt",
   "module": "src/index.ts",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "type": "module",
   "files": [
     "src",
-    "shared"
+    "shared",
+    "stt-server/*.py",
+    "stt-server/requirements.txt",
+    "stt-server/requirements-dev.txt",
+    "stt-server/tests/*.py",
+    "extension",
+    ".opencode/skills",
+    ".opencode/tui",
+    ".opencode/web",
+    ".opencode/commands",
+    ".opencode/agents",
+    "doctor.sh",
+    "fix-mic.sh",
+    "setup.sh",
+    "sync-plugin.sh"
   ],
   "engines": {
     "node": ">=20"

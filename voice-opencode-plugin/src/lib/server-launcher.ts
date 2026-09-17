@@ -13,6 +13,7 @@
 import { spawn } from "node:child_process"
 import { closeSync, existsSync, openSync } from "node:fs"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const DEFAULT_PORT = 8765
 const DEFAULT_WATCHDOG_MS = 120_000
@@ -40,6 +41,9 @@ function isDisabled(): boolean {
 function serverScript(directory: string): string | null {
   const candidates = [
     process.env.OPENCODE_VOICE_SERVER_SCRIPT || "",
+    // Относительно самого пакета: работает и при установке из npm
+    // (<pkg>/src/lib/server-launcher.ts -> <pkg>/stt-server/stt_server.py).
+    fileURLToPath(new URL("../../stt-server/stt_server.py", import.meta.url)),
     join(directory, "voice-opencode-plugin", "stt-server", "stt_server.py"),
     join(process.cwd(), "voice-opencode-plugin", "stt-server", "stt_server.py"),
     join(process.cwd(), "stt-server", "stt_server.py"),

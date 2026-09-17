@@ -44,7 +44,7 @@
 9. ✅ **Адаптивный выбор модели**: `WHISPER_MODEL`/`WHISPER_CPP_MODEL_SIZE` переопределяют, иначе `medium` на GPU и `small` на CPU; на CPU whisper.cpp берёт `small`, если он есть. — `src/lib/{stt,whisper}.ts`, `stt_server.py`
 10. ⬜ **Сериализация транскрибации**: Flask `threaded=True` + общий объект модели faster-whisper → возможные конфликты при параллельных запросах. Lock/очередь.
 11. ✅ **Блокирующий хук / логи**: поведение `/voice` (хук блокируется на время записи; отказы логируются как ERROR, чтобы не уходил пустой запрос; авто-стоп по тишине) задокументировано в README EN/RU и AGENTS.md. — `README.md`, `README.ru.md`
-12. 🚧 **npm-пакет**: добавлены `files`, `engines`, `repository`, `homepage`, `bugs`, `publishConfig`; имя переведено в скоуп `@di1r1/opencode-voice` (без скоупа имя занято), `package-lock` пересинхронизирован. Осталось: реальная публикация/версионирование. — `package.json`
+12. 🚧 **npm-пакет**: добавлены `files`, `engines`, `repository`, `homepage`, `bugs`, `publishConfig`; имя переведено в скоуп `@di1r1/opencode-voice` (без скоупа имя занято), `package-lock` пересинхронизирован. Упаковка доведена до полной: в тарболл входят плагин, STT-сервер, расширение, скрипты и `.opencode/{skills,tui,web,commands,agents}` (44 файла, ~82 кБ); плагин находит `stt_server.py` и `doctor.sh` относительно пакета. Осталось: реальная публикация в npm. — `package.json`, `src/lib/server-launcher.ts`, `src/index.ts`
 13. 🚧 **Chrome Web Store**: добавлены иконки 16/32/48/128 (`extension/icons/`, в `manifest.icons` и `action.default_icon`), версия расширения 1.0.8; версия сервера и расширения видны в popup и в консоли. Осталось: сузить `content_scripts.matches` (`<all_urls>` → реджект) и политика приватности. — `extension/manifest.json`
 
 ---

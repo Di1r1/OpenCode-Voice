@@ -43,6 +43,11 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   exercises the actual server over HTTP (health, CORS preflight, transcribe with `source=button`,
   Origin guard, beep) with a stub whisper-cli; the latter skips itself when Flask is unavailable.
   Test hooks: `OPENCODE_VOICE_RECORDER_BIN` (plugin) and `OPENCODE_VOICE_STALE_CLEANUP=0` (server).
+- **Full npm packaging.** The package now ships the plugin, the STT server, the Chrome extension,
+  the installer scripts and the OpenCode assets (`.opencode/{skills,tui,web,commands,agents}`), and
+  the plugin resolves `stt-server/stt_server.py` / `doctor.sh` relative to the package, so an npm
+  install works without a repo checkout. `.opencode/tui|web|commands|agents` are versioned now — only
+  `.opencode/plugins/index.ts` stays generated. `npm pack` yields 44 files / ~82 kB.
 - This `CHANGELOG.md`.
 
 ## [0.3.0] - 2026-09-17

@@ -148,6 +148,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const fs = await import("node:fs")
         const path = await import("node:path")
         const candidates = [
+          // Относительно самого пакета (работает и при установке из npm).
+          path.join(path.dirname((await import("node:url")).fileURLToPath(import.meta.url)), "..", "doctor.sh"),
           path.join(directory, "voice-opencode-plugin", "doctor.sh"),
           path.join(directory, "doctor.sh"),
           path.join(directory, ".opencode", "plugins", "doctor.sh"),

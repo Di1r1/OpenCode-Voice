@@ -29,7 +29,7 @@
 - **Chrome/Chromium** — для кнопки 🎤 в веб-интерфейсе (TUI работает и без неё).
 - Опционально: NVIDIA GPU с WSL-совместимым драйвером — для `whisper.cpp` + CUDA.
 
-> **Папка `.opencode/` генерируется локально.** `sync-plugin.sh` создаёт `voice-opencode-plugin/.opencode/plugins/index.ts` и `.opencode/tui/voice.ts` (копирует `src/index.ts` и правит импорты). Папка в `.gitignore` — запускайте синк после каждого клона и после правок `src/index.ts`. Исключение: `.opencode/skills/` (навыки `ovi-*` для агентов/контрибьюторов) версионируется.
+> **Что генерируется, а что версионируется в `.opencode/`.** `sync-plugin.sh` создаёт только `voice-opencode-plugin/.opencode/plugins/index.ts` (копия `src/index.ts` с правкой импортов) — этот файл в `.gitignore`, поэтому запускайте синк после каждого клона и после правок `src/index.ts`. Остальное версионируется: `.opencode/skills/`, `.opencode/tui/`, `.opencode/web/`, `.opencode/commands/`, `.opencode/agents/`.
 
 ## Установка
 
@@ -110,9 +110,23 @@ python3 stt_server.py --model medium --port 8765
 ```bash
 cd voice-opencode-plugin
 npm install
-bash sync-plugin.sh        # создаёт .opencode/plugins/index.ts и .opencode/tui/voice.ts
+bash sync-plugin.sh        # создаёт .opencode/plugins/index.ts
 npm run typecheck
 ```
+
+Либо поставьте пакет из npm — в нём уже есть плагин, STT-сервер, расширение и скрипты установки:
+
+```bash
+npm install @di1r1/opencode-voice
+```
+
+и укажите его по имени (без `sync-plugin.sh`; сервер плагин найдёт внутри пакета сам):
+
+```jsonc
+"plugin": ["@di1r1/opencode-voice"]
+```
+
+У тарболла из `npm pack` — та же структура.
 
 Затем укажите OpenCode на сгенерированную entry-точку. Плагин и хоткей TUI подключаются **file-URL** в конфиге OpenCode (именно так это подключено в рабочей установке):
 
@@ -361,7 +375,7 @@ voice-opencode-plugin/
 ├── AGENTS.md                # заметки по архитектуре для агентов/контрибьюторов
 ├── TEST_PLAN.md             # план ручного тестирования
 ├── SKILLS_GUIDE.md          # как подключены навыки: добавить/зарегистрировать/диагностировать
-└── .opencode/               # генерируется sync-plugin.sh (в .gitignore; .opencode/skills/ версионируется)
+└── .opencode/               # plugins/index.ts генерируется; skills/tui/web/commands/agents версионируются
 ```
 
 В корне репозитория также `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `CHANGELOG.md` (история версий), `LICENSE` и CI в `.github/workflows/ci.yml`.

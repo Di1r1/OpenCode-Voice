@@ -1,7 +1,15 @@
 # OpenCode Voice — © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
 # Local OpenCode runtime artifacts for the voice plugin.
-# The synced plugin copy (.opencode/plugins/index.ts), tui/web, agents and commands
-# are kept on disk only — regenerate the plugin copy with sync-plugin.sh.
-# Exception: agent skills (.opencode/skills/) ARE versioned — they document the product.
+# The synced plugin copy (.opencode/plugins/index.ts) is generated — run sync-plugin.sh.
+# Versioned (documented product assets): skills, tui/web plugins, commands, agents.
 voice-opencode-plugin/.opencode/*
 !voice-opencode-plugin/.opencode/skills/
+!voice-opencode-plugin/.opencode/tui/
+!voice-opencode-plugin/.opencode/web/
+!voice-opencode-plugin/.opencode/commands/
+!voice-opencode-plugin/.opencode/agents/
+
+# Python/test caches (also keeps them out of the npm tarball)
+__pycache__/
+*.pyc
+.pytest_cache/
