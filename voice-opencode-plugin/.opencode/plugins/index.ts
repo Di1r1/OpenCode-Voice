@@ -47,6 +47,16 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
     }
   }
 
+  // Живой индикатор в поле ввода (таймер записи). Best-effort.
+  const setPromptText = (text: string) => {
+    try {
+      client.tui.clearPrompt()
+      if (text) client.tui.appendPrompt({ body: { text } })
+    } catch {
+      // prompt indicator is best-effort
+    }
+  }
+
   const showToast = (message: string, variant: "success" | "error" | "info" = "info") => {
     try {
       client.tui.showToast({ body: { message, variant } })
@@ -138,19 +148,23 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const rec = await import("../../src/lib/recorder")
         const { transcribe, stripNonSpeech } = await import("../../src/lib/stt")
 
+        const { beep } = await import("../../src/lib/beep")
         const recordOnce = async () => {
-          showToast("🎙 Запись: 0 сек")
+          setPromptText("🎙 Запись 0/30 с")
+          await beep($, 880, 120)
           const s = await rec.startPushToTalk($, { maxSeconds: 30 })
           const t0 = Date.now()
           const tick = setInterval(() => {
             const sec = Math.floor((Date.now() - t0) / 1000)
-            if (sec <= 30) showToast(`🎙 Запись: ${sec} сек`)
+            if (sec <= 30) setPromptText(`🎙 Запись ${sec}/30 с`)
           }, 1000)
           try {
             await rec.waitPushToTalkEnd(s, 35000)
           } finally {
             clearInterval(tick)
+            setPromptText("")
           }
+          await beep($, 520, 140)
           return s
         }
 

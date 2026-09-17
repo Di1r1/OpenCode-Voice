@@ -11,7 +11,7 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 
 ## Commands (`/voice`)
 
-- `/voice` - Records 30 seconds from the mic, transcribes it, and inserts the text into the prompt (the recognized text is also set as the command output so no empty request is sent). Service markers (`[музыка]`, `(смех)`, `♪`) are stripped (`stripNonSpeech` in `src/lib/stt.ts`, `_strip_non_speech` in `stt_server.py`).
+- `/voice` - Records 30 seconds from the mic, transcribes it, and inserts the text into the prompt (the recognized text is also set as the command output so no empty request is sent). While recording, a live timer is shown in the prompt via `clearPrompt`/`appendPrompt` (`setPromptText`) and short beeps play on start/stop (`beep()` in `src/lib/beep.ts`, aplay/paplay/ffplay). Service markers (`[музыка]`, `(смех)`, `♪`) are stripped (`stripNonSpeech` in `src/lib/stt.ts`, `_strip_non_speech` in `stt_server.py`).
 - `/voice <file.wav>` - Transcribe a local audio file.
 - `/voice backend [local|api]` - View/switch STT backend.
 - `/voice lang [ru|en|auto]` - View/change recognition language.
