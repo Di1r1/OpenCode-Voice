@@ -11,7 +11,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { config } from "./config"
-import { defaultModelSize, hasCuda, ldLibraryPath, whisperBin, whisperModelPath } from "./whisper"
+import { CPU_MODEL_SIZE, GPU_MODEL_SIZE, WHISPER_CPP_EXTRA_FLAGS, defaultModelSize, hasCuda, ldLibraryPath, whisperBin, whisperModelPath } from "./whisper"
 
 // Диагностика: какой бэкенд реально использовался (`/tmp/opencode/voice-stt.log`).
 function note(backend: string, info: string): void {
@@ -199,11 +199,11 @@ async function transcribeLocal(opts: { file: string; language: string; device?: 
   const size = defaultModelSize(process.env, cuda)
   const bin = whisperBin()
   const sizeModel = whisperModelPath(size)
-  const mediumModel = whisperModelPath("medium")
-  const smallModel = whisperModelPath("small")
-  // GPU: выбранный размер, иначе medium, иначе small. CPU: small (medium слишком медленный).
-  const gpuModel = existsSync(sizeModel) ? sizeModel : (existsSync(mediumModel) ? mediumModel : smallModel)
-  const cpuModel = existsSync(smallModel) ? smallModel : gpuModel
+  const gpuDefaultModel = whisperModelPath(GPU_MODEL_SIZE)
+  const cpuDefaultModel = whisperModelPath(CPU_MODEL_SIZE)
+  // GPU: выбранный размер, иначе GPU-дефолт, иначе CPU-дефолт (из shared/stt-spec.json).
+  const gpuModel = existsSync(sizeModel) ? sizeModel : (existsSync(gpuDefaultModel) ? gpuDefaultModel : cpuDefaultModel)
+  const cpuModel = existsSync(cpuDefaultModel) ? cpuDefaultModel : gpuModel
 
   const preferGpu = device === "gpu" || (device === "auto" && cuda)
   const haveWhisperCpp = !!bin && existsSync(gpuModel)
@@ -344,7 +344,7 @@ async function transcribeWhisperCpp(opts: { file: string; language: string; $: a
   const lang = language && language !== "auto" ? language : "auto"
   // CUDA-рантайм + драйвер WSL (каталоги находятся автоматически).
   const ld = ldLibraryPath()
-  const out = await $`env LD_LIBRARY_PATH=${ld} ${cli} -m ${model} -f ${file} -l ${lang} -nt -np -mc 0 -sns`.text()
+  const out = await $`env LD_LIBRARY_PATH=${ld} ${cli} -m ${model} -f ${file} -l ${lang} -nt -np ${WHISPER_CPP_EXTRA_FLAGS}`.text()
   const text = out.trim()
   if (!text) throw new Error("whisper.cpp не выдал текст")
   return text

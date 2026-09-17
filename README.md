@@ -338,6 +338,7 @@ voice-opencode-plugin/
 ├── opencode.json            # project-local plugin wiring (for development)
 ├── tui.json                 # project-local TUI plugin wiring (sample)
 ├── pytest.ini               # hermetic server tests
+├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json)
 ├── AGENTS.md                # architecture notes for agents/contributors
 ├── TEST_PLAN.md             # manual test plan
 ├── SKILLS_GUIDE.md          # how skills are wired: add/register/diagnose

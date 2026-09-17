@@ -1,29 +1,32 @@
 // Тесты пост-обработки распознанного текста (stripNonSpeech).
 //
-// Запуск: npm test  (node --experimental-strip-types --test test/)
-// Модуль src/lib/text.ts не имеет зависимостей, поэтому импортируется напрямую.
+// Кейсы лежат в shared/strip-cases.json — тот же файл использует pytest,
+// поэтому TS и Python гарантированно ведут себя одинаково.
+//
+// Запуск: npm test
 
 import test from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { stripNonSpeech } from "../src/lib/text.ts"
 
-const cases = [
-  ["Продолжение следует. [музыка] [музыка]", "Продолжение следует.", "убирает [музыка] и лишние пробелы"],
-  ["Раз, два, три (смех) проверка ♪", "Раз, два, три проверка", "убирает (смех) и ноты"],
-  ["[Music] hello (to est) world", "hello (to est) world", "оставляет неслужебные скобки"],
-  ["*music* только шум [applause]", "только шум", "убирает *music* и [applause]"],
-  ["Раз-два-три проверка микрофона, как слышно?", "Раз-два-три проверка микрофона, как слышно?", "обычный текст не меняет"],
-  ["[музыка]", "", "только пометки -> пусто"],
-  ["Привет   ,  мир [музыка]", "Привет, мир", "схлопывает пробелы и чинит пунктуацию"],
-  ["(MUSIC) [MUSIC] ♪♫♬", "", "регистронезависимо, ноты удаляются"],
-  ["(шум) (тишина) (неразборчиво)", "", "русские служебные пометки"],
-  ["текст (то есть пояснение) ещё", "текст (то есть пояснение) ещё", "скобки с текстом сохраняются"],
-  ["а    б", "а б", "схлопывает повторные пробелы"],
-  ["", "", "пустая строка"],
-]
+const read = (rel) =>
+  JSON.parse(readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8"))
 
-for (const [input, expected, label] of cases) {
+const cases = read("../shared/strip-cases.json")
+
+for (const { label, in: input, out } of cases) {
   test(label, () => {
-    assert.equal(stripNonSpeech(input), expected)
+    assert.equal(stripNonSpeech(input), out)
   })
 }
+
+test("shared spec is present and complete", () => {
+  const spec = read("../shared/stt-spec.json")
+  assert.ok(Array.isArray(spec.nonSpeechKeywords) && spec.nonSpeechKeywords.length > 0)
+  assert.ok(typeof spec.nonSpeechSymbols === "string" && spec.nonSpeechSymbols.length > 0)
+  assert.ok(spec.silence?.peak > 0 && spec.silence?.rms > 0)
+  assert.ok(Array.isArray(spec.whisperCppExtraFlags) && spec.whisperCppExtraFlags.length > 0)
+  assert.ok(spec.defaultModelByDevice?.gpu && spec.defaultModelByDevice?.cpu)
+})

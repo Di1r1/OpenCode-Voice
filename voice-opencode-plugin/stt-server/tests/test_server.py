@@ -10,6 +10,7 @@ Run:
 
 import importlib.util
 import io
+import json
 import math
 import os
 import time
@@ -352,6 +353,35 @@ def test_cors_allows_voice_source_header(client):
                  "Access-Control-Request-Headers": "X-Voice-Source"},
     )
     assert "X-Voice-Source" in r.headers.get("Access-Control-Allow-Headers", "")
+
+
+# ---------------------------------------------------------------------------
+# Single source of truth: shared/stt-spec.json and shared/strip-cases.json
+# (the same files are used by the TypeScript tests)
+# ---------------------------------------------------------------------------
+
+SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
+
+
+def _shared(name):
+    return json.loads((SHARED_DIR / name).read_text(encoding="utf-8"))
+
+
+def test_strip_non_speech_matches_shared_cases():
+    cases = _shared("strip-cases.json")
+    assert cases, "shared/strip-cases.json is empty"
+    for case in cases:
+        assert srv._strip_non_speech(case["in"]) == case["out"], case["label"]
+
+
+def test_shared_spec_is_loaded_by_server():
+    spec = _shared("stt-spec.json")
+    assert srv.SPEC["nonSpeechKeywords"] == spec["nonSpeechKeywords"]
+    assert srv.SPEC["nonSpeechSymbols"] == spec["nonSpeechSymbols"]
+    assert srv.SPEC["whisperCppExtraFlags"] == spec["whisperCppExtraFlags"]
+    assert srv.SPEC["defaultModelByDevice"] == spec["defaultModelByDevice"]
+    assert srv.SILENCE_PEAK == spec["silence"]["peak"]
+    assert srv.SILENCE_RMS == spec["silence"]["rms"]
 
 
 # ---------------------------------------------------------------------------

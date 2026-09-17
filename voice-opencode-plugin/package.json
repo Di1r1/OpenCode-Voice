@@ -5,7 +5,8 @@
   "module": "src/index.ts",
   "type": "module",
   "files": [
-    "src"
+    "src",
+    "shared"
   ],
   "engines": {
     "node": ">=20"

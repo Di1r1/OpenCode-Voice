@@ -1,6 +1,6 @@
 # Аудит OpenCode Voice — путь до промышленной эксплуатации
 
-**Дата:** 2026-09-17 · **База:** коммит `564d886` (v0.3.1) · **Легенда:** ✅ сделано · 🚧 частично · ⬜ запланировано
+**Дата:** 2026-09-17 · **База:** `v0.3.1` (рабочая ветка) · **Легенда:** ✅ сделано · 🚧 частично · ⬜ запланировано
 
 Документ ведём по мере работ: отмечаем статус и коммит.
 
@@ -29,7 +29,7 @@
 - ✅ Общий набор кейсов для `stripNonSpeech` / `_strip_non_speech` (TS + Python): Python — в `test_server.py`, TS — `test/strip-nonspeech.test.mjs` (12 кейсов, `npm test`, шаг в CI). Логика TS вынесена в `src/lib/text.ts` без зависимостей.
 
 ### 5. Дублирование логики TS ↔ Python
-- ⬜ Выбор бэкенда, дефолты моделей и `stripNonSpeech` реализованы дважды (`src/lib/stt.ts` и `stt-server/stt_server.py`) и уже рассинхронизировались. Решение: один источник истины (плагин ходит в сервер, либо общий формат/генерация).
+- ✅ Общие значения вынесены в `shared/stt-spec.json` (список служебных маркеров и символы, пороги тишины, доп. флаги whisper.cpp `-mc 0 -sns`, размеры моделей GPU/CPU) — читают и TS (`src/lib/text.ts`, `src/lib/whisper.ts`), и Python (`stt_server.py`), со встроенным фолбэком. Кейсы `stripNonSpeech` — в `shared/strip-cases.json`, их проверяют оба набора тестов (у Python паритетных тестов раньше не было). Осталось (не критично): выбор бэкенда по-прежнему описан в двух местах — плагин (локальный whisper.cpp/faster-whisper/api) и сервер (`transcribe_file`), но scopes у них разные.
 
 ---
 
@@ -64,12 +64,12 @@
 
 ---
 
-## Проверки (актуально на `9299810`)
+## Проверки (актуально на `v0.3.1`)
 - `tsc --noEmit` — OK
 - `python3 -m py_compile stt_server.py` — OK
 - `bash sync-plugin.sh --check` — OK
-- `python3 -m pytest` (**42 теста**, герметично) — OK
-- `npm test` (**21 тест**: 12 `stripNonSpeech` + 9 путей/моделей whisper.cpp) — OK
+- `python3 -m pytest` (**44 теста**, герметично) — OK
+- `npm test` (**24 теста**: 14 кейсов `stripNonSpeech` из `shared/strip-cases.json` + целостность `shared/stt-spec.json` + 9 путей/моделей whisper.cpp) — OK
 - Bind/CORS/доступ из Windows — OK (`ss` → `127.0.0.1:8765`)
 - Ленивый импорт (эмуляция отсутствия `faster-whisper`) — OK
 - Запись сервером — OK (`pcm_s16le, 16000 Hz, mono`), `/beep` пишет в лог

@@ -10,11 +10,46 @@
  *      CUDA_HOME, CUDA_PATH, OPENCODE_VOICE_CUDA.
  */
 
-import { existsSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 export type Env = Record<string, string | undefined>
+
+// Единый источник истины с Python: shared/stt-spec.json (фолбэк совпадает со спеком).
+const FALLBACK_SPEC = {
+  whisperCppExtraFlags: ["-mc", "0", "-sns"],
+  defaultModelByDevice: { gpu: "medium", cpu: "small" },
+}
+
+function loadSpec(): { flags: string[]; gpu: string; cpu: string } {
+  try {
+    const url = new URL("../../shared/stt-spec.json", import.meta.url)
+    const raw = JSON.parse(readFileSync(fileURLToPath(url), "utf8"))
+    return {
+      flags: Array.isArray(raw?.whisperCppExtraFlags) && raw.whisperCppExtraFlags.length
+        ? raw.whisperCppExtraFlags.map(String)
+        : FALLBACK_SPEC.whisperCppExtraFlags,
+      gpu: raw?.defaultModelByDevice?.gpu || FALLBACK_SPEC.defaultModelByDevice.gpu,
+      cpu: raw?.defaultModelByDevice?.cpu || FALLBACK_SPEC.defaultModelByDevice.cpu,
+    }
+  } catch {
+    return {
+      flags: FALLBACK_SPEC.whisperCppExtraFlags,
+      gpu: FALLBACK_SPEC.defaultModelByDevice.gpu,
+      cpu: FALLBACK_SPEC.defaultModelByDevice.cpu,
+    }
+  }
+}
+
+const SPEC = loadSpec()
+
+/** Доп. флаги whisper.cpp (анти-галлюцинации), из shared/stt-spec.json. */
+export const WHISPER_CPP_EXTRA_FLAGS: string[] = SPEC.flags
+/** Размер модели по умолчанию для GPU/CPU, из shared/stt-spec.json. */
+export const GPU_MODEL_SIZE = SPEC.gpu
+export const CPU_MODEL_SIZE = SPEC.cpu
 
 export function whisperHome(env: Env = process.env, home: string = os.homedir()): string {
   return env.OPENCODE_VOICE_HOME || path.join(home, ".local/share/opencode-voice")
@@ -84,9 +119,9 @@ export function whisperBin(env: Env = process.env, home: string = os.homedir()):
   return null
 }
 
-/** Размер модели: явный env, иначе medium на GPU и small на CPU. */
+/** Размер модели: явный env, иначе значение из spec (GPU/CPU). */
 export function defaultModelSize(env: Env = process.env, cuda: boolean = hasCuda(env)): string {
-  return env.WHISPER_CPP_MODEL_SIZE || env.WHISPER_MODEL || (cuda ? "medium" : "small")
+  return env.WHISPER_CPP_MODEL_SIZE || env.WHISPER_MODEL || (cuda ? GPU_MODEL_SIZE : CPU_MODEL_SIZE)
 }
 
 /** LD_LIBRARY_PATH: каталог бинаря + найденные CUDA-каталоги. */

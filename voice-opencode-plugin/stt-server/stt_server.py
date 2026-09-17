@@ -12,6 +12,7 @@ Run:
 """
 
 import array
+import json
 import os
 import platform
 import re
@@ -26,6 +27,37 @@ import wave
 import logging
 from pathlib import Path
 from flask import Flask, request, jsonify
+
+# --- Единый источник истины с TypeScript: voice-opencode-plugin/shared/stt-spec.json ---
+_SPEC_PATH = Path(__file__).resolve().parents[1] / "shared" / "stt-spec.json"
+_FALLBACK_SPEC = {
+    "nonSpeechKeywords": [
+        "музык", "music", "аплодисмент", "applause", "смех", "laugh", "тишин", "silence",
+        "шум", "noise", "звук", "sound", "свист", "whistl", "кашел", "кашл", "cough",
+        "вздох", "sigh", "шёпот", "шепот", "whisper", "неразборчив", "inaudible", "пауза",
+        "paus", "гудок", "сигнал", "signal", "звон", "ring", "стук", "knock", "хлопок",
+        "clap", "помех", "static", "инструментал", "instrumental", "мужской голос", "женский голос",
+    ],
+    "nonSpeechSymbols": "♪♫♬♩♭♮#",
+    "silence": {"peak": 700, "rms": 80},
+    "whisperCppExtraFlags": ["-mc", "0", "-sns"],
+    "defaultModelByDevice": {"gpu": "medium", "cpu": "small"},
+}
+
+
+def _load_spec() -> dict:
+    """Читает shared/stt-spec.json (единый с плагином); при ошибке — фолбэк."""
+    try:
+        with open(_SPEC_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        merged = dict(_FALLBACK_SPEC)
+        merged.update({k: v for k, v in data.items() if not k.startswith("$")})
+        return merged
+    except Exception:
+        return dict(_FALLBACK_SPEC)
+
+
+SPEC = _load_spec()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -259,9 +291,10 @@ def _cuda_available() -> bool:
 
 
 def _default_model_size() -> str:
-    """Размер модели: явный env, иначе medium на GPU и small на CPU."""
+    """Размер модели: явный env, иначе значение из spec (GPU/CPU)."""
     return (os.getenv("WHISPER_CPP_MODEL_SIZE") or os.getenv("WHISPER_MODEL")
-            or ("medium" if _cuda_available() else "small"))
+            or (SPEC["defaultModelByDevice"]["gpu"] if _cuda_available()
+                else SPEC["defaultModelByDevice"]["cpu"]))
 
 
 def _whisper_bin() -> str:
@@ -505,13 +538,12 @@ def _to_wav(path: str):
 
 
 # Служебные пометки Whisper на музыке/шуме: [музыка], (смех), ♪, *music* и т.п.
+# Источник списка — shared/stt-spec.json (тот же, что в src/lib/text.ts).
 _NON_SPEECH = re.compile(
-    r"^(музык|music|аплодисмент|applause|смех|laugh|тишин|silence|шум|noise|"
-    r"звук|sound|свист|whistl|кашел|кашл|cough|вздох|sigh|шёпот|шепот|whisper|"
-    r"неразборчив|inaudible|пауза|paus|гудок|сигнал|signal|звон|ring|стук|knock|"
-    r"хлопок|clap|помех|static|инструментал|instrumental|мужской голос|женский голос)",
+    "^(?:" + "|".join(re.escape(k) for k in SPEC["nonSpeechKeywords"]) + ")",
     re.IGNORECASE,
 )
+_SYMBOLS_RE = re.compile("[" + re.escape(SPEC["nonSpeechSymbols"]) + "]+")
 
 
 def _strip_non_speech(text: str) -> str:
@@ -523,14 +555,14 @@ def _strip_non_speech(text: str) -> str:
         lambda m: " " if _NON_SPEECH.match(m.group(1).strip()) else m.group(0),
         t,
     )                                             # (смех), но не (то есть)
-    t = re.sub(r"[♪♫♬♩♭♮#]+", " ", t)             # ноты
+    t = _SYMBOLS_RE.sub(" ", t)                   # ноты (из shared/stt-spec.json)
     t = re.sub(r"\s{2,}", " ", t)
     t = re.sub(r"\s+([,.!?;:])", r"\1", t)
     return t.strip()
 
 
-SILENCE_PEAK = int(os.getenv("OPENCODE_VOICE_SILENCE_PEAK", "700"))
-SILENCE_RMS = int(os.getenv("OPENCODE_VOICE_SILENCE_RMS", "80"))
+SILENCE_PEAK = int(os.getenv("OPENCODE_VOICE_SILENCE_PEAK", str(SPEC["silence"]["peak"])))
+SILENCE_RMS = int(os.getenv("OPENCODE_VOICE_SILENCE_RMS", str(SPEC["silence"]["rms"])))
 
 
 def _wav_levels(path: str) -> tuple:
@@ -608,7 +640,7 @@ def _transcribe_whispercpp(path: str) -> dict:
             return {"text": "", "language": lang, "language_probability": 1.0, **meta}
         # -mc 0 (без переноса контекста) и -sns (без не-речевых токенов) снижают галлюцинации.
         cmd = [WHISPER_CPP_BIN, "-m", WHISPER_CPP_MODEL, "-f", audio, "-l", lang,
-               "-nt", "-np", "-mc", "0", "-sns"]
+               "-nt", "-np", *SPEC["whisperCppExtraFlags"]]
         logger.info(f"whisper.cpp -> {' '.join(cmd)}")
         start = time.time()
         proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=180)

@@ -25,7 +25,11 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
 - **Adaptive model size:** `WHISPER_MODEL`/`WHISPER_CPP_MODEL_SIZE` override the default, which is
   now `medium` on GPU and `small` on CPU (previously always `medium`).
 - `OPENCODE_VOICE_MAX_RECORD_SECONDS` (default `300`) — configurable hard cap for `/voice`
-  recordings; recording still stops on silence (~1.5 s), the cap only bounds long monologues.
+  recordings; recording still stops on silence (~1.5 s),   the cap only bounds long monologues.
+- **Single source of truth for TypeScript and Python:** `shared/stt-spec.json` (non-speech markers,
+  silence thresholds, whisper.cpp extra flags, per-device model sizes) and `shared/strip-cases.json`
+  (parity cases). Both `npm test` and `pytest` read them, so the two implementations can no longer
+  drift; Python gained the previously missing `stripNonSpeech` tests.
 - This `CHANGELOG.md`.
 
 ## [0.3.0] - 2026-09-17
