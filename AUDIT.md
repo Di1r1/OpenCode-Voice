@@ -34,7 +34,7 @@
 
 ## P1 — важно
 
-6. ⬜ **Пустой запрос модели** на путях `/voice <file>` при ошибке и info-подкомандах `backend/lang/device/help`: остаётся `parts="\n"`. Привести к единому поведению (как в PTT — throw или иной механизм). — `src/index.ts`
+6. ✅ **Пустой запрос модели**: info-подкоманды `backend/lang/device/help` и сбой `/voice <file>` кладут в `parts` служебный текст (`svc(...)`) вместо `"\n"`; успех PTT/файла — распознанный текст; сбои PTT бросают исключение (без запроса). — `src/index.ts`
 7. ⬜ **Персист состояния**: `state.backend/language/device` живёт в памяти, общий на все сессии, сбрасывается при рестарте. Писать в `~/.config/opencode-voice/config.json` (или читать из `opencode.json`). — `src/index.ts`, `src/lib/config.ts`
 8. ⬜ **Портируемость**: захардкожены `~/cuda-12.6/lib64`, `~/.local/share/opencode-voice/whisper/*`. Авто-детекция + только env. — `src/lib/stt.ts:288`, `stt_server.py:100,286`, `_cuda_available`
 9. ⬜ **Адаптивный выбор модели**: сейчас дефолт `medium` и на CPU (медленно). Автоподбор (CPU→small, GPU→medium) или явная настройка.

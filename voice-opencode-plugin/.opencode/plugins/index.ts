@@ -65,11 +65,20 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
       // Suppress the markdown command template ($ARGUMENTS) so the LLM is not
       // invoked with the raw template for /voice subcommands — we handle them
       // entirely in the plugin. OpenCode always calls the prompt function after
-      // this hook, so we replace parts with a single empty text part to keep the
-      // prompt valid (an empty parts array triggers a Google API error).
-      output.parts.length = 0
-      // Part требует id/sessionID/messageID по типам, рантайм их проставляет сам.
-      output.parts.push({ type: "text", text: "\n" } as any)
+      // this hook, so parts are never left empty: success paths carry the
+      // transcript, info subcommands carry a service text (svc), and failures
+      // throw so no request is sent at all.
+      const setParts = (text: string) => {
+        output.parts.length = 0
+        // Part требует id/sessionID/messageID по типам, рантайм их проставляет сам.
+        output.parts.push({ type: "text", text } as any)
+      }
+      // Служебные ответы не должны превращаться в пустой запрос к модели:
+      // кладём осмысленный текст с просьбой не отвечать (OpenCode всегда
+      // вызывает prompt() после хука).
+      const svc = (t: string) =>
+        `(служебное сообщение плагина Voice, ответ не нужен) ${t}`
+      setParts("\n")
       await log("parts replaced", { now: output.parts.length })
 
       const args = (input.arguments || "").trim()
@@ -81,14 +90,17 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const want = parts[1]?.toLowerCase()
         if (!want) {
           showToast(`Текущий бэкенд: ${state.backend}`)
+          setParts(svc(`Текущий бэкенд: ${state.backend}`))
           return
         }
         if (want !== "local" && want !== "api") {
           showToast("Доступные бэкенды: local, api", "error")
+          setParts(svc(`Неизвестный бэкенд «${want}». Доступные: local, api`))
           return
         }
         state.backend = want as "local" | "api"
         showToast(`Бэкенд переключён на: ${state.backend}`)
+        setParts(svc(`Бэкенд переключён на: ${state.backend}`))
         return
       }
 
@@ -97,14 +109,17 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const want = parts[1]?.toLowerCase()
         if (!want) {
           showToast(`Текущий язык: ${state.language}`)
+          setParts(svc(`Текущий язык: ${state.language}`))
           return
         }
         if (!(STT_LANGUAGES as readonly string[]).includes(want)) {
           showToast(`Доступные языки: ${STT_LANGUAGES.join(", ")}`, "error")
+          setParts(svc(`Неизвестный язык «${want}». Доступные: ${STT_LANGUAGES.join(", ")}`))
           return
         }
         state.language = want
         showToast(`Язык установлен: ${state.language}`)
+        setParts(svc(`Язык установлен: ${state.language}`))
         return
       }
 
@@ -113,27 +128,31 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const want = parts[1]?.toLowerCase()
         if (!want) {
           showToast(`Текущее устройство: ${state.device} (auto: GPU, иначе CPU)`)
+          setParts(svc(`Текущее устройство: ${state.device} (auto: GPU, иначе CPU)`))
           return
         }
         if (!(STT_DEVICES as readonly string[]).includes(want)) {
           showToast(`Доступные устройства: ${STT_DEVICES.join(", ")}`, "error")
+          setParts(svc(`Неизвестное устройство «${want}». Доступные: ${STT_DEVICES.join(", ")}`))
           return
         }
         state.device = want
         showToast(`Устройство установлено: ${state.device}${want === "cpu" ? " (faster-whisper)" : ""}`)
+        setParts(svc(`Устройство установлено: ${state.device}`))
         return
       }
 
       // /voice help — список возможностей
       if (sub === "help" || sub === "-h" || sub === "--help") {
-        showToast(
+        const helpText =
           "Voice:\n" +
           "• /voice — запись 30 с → текст в поле ввода\n" +
           "• /voice backend [local|api]\n" +
           "• /voice lang [ru|en|auto]\n" +
           "• /voice device [auto|gpu|cpu]\n" +
-          "• /voice <файл.wav|mp3|m4a|ogg|flac>",
-        )
+          "• /voice <файл.wav|mp3|m4a|ogg|flac>"
+        showToast(helpText)
+        setParts(svc(helpText))
         return
       }
 
@@ -153,12 +172,12 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
           })
           const text = stripNonSpeech(raw)
           append(text)
-          output.parts.length = 0
-          output.parts.push({ type: "text", text } as any)
+          setParts(text)
           showToast("Готово", "success")
         } catch (e: any) {
           await log("transcribe file failed", { error: e?.message || String(e) })
           showToast(`Ошибка: ${e?.message || e}`, "error")
+          setParts(svc(`/voice ${file}: ошибка распознавания — ${e?.message || e}`))
         }
         return
       }
@@ -214,8 +233,7 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         }
         await beep($, 660, 120)
         append(text)
-        output.parts.length = 0
-        output.parts.push({ type: "text", text } as any)
+        setParts(text)
         showToast(`✅ Готово: "${text.slice(0, 40)}..."`, "success")
       } catch (e: any) {
         await log("ptt aborted", { error: e?.message || String(e) })
