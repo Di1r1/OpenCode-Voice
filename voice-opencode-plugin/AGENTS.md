@@ -20,6 +20,20 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 - `/voice device [auto|gpu|cpu]` - View/change local device (GPU whisper.cpp / CPU faster-whisper).
 - `/voice doctor [--fix]` - Runs `doctor.sh` (server process/port/health, CORS for `X-Voice-Source`, stuck recording, mic probe with delivery ratio, log freshness) and shows the tail in the prompt. `--fix` also repairs: restarts the server via the watchdog, clears a stuck recording (`POST /record/stop`), runs `fix-mic.sh`. Use it when the extension button shows `Failed to fetch` / 401 / 409.
 
+## Skill routing
+
+Load the matching skill (tool `skill`) **before** working on an area. Skills live in `.opencode/skills/` and are versioned (the rest of `.opencode/` is generated and git-ignored); OpenCode discovers them via `skills.paths` in the global config, so a restart is needed after adding one.
+
+| Task / area | Skill |
+| --- | --- |
+| Product overview, "what is this / which component" | `ovi-overview` |
+| Plugin internals: `src/index.ts`, `/voice` subcommands, recorder | `ovi-plugin` |
+| STT HTTP server: `stt_server.py`, endpoints, token, CORS, autostart, logs | `ovi-server` |
+| Extension / 🎤 button, popup token, sounds, versions | `ovi-extension` |
+| Models, GPU/CUDA, quality/speed tuning | `ovi-models` |
+| "It does not work": Failed to fetch, silence, 401/409, slow channel, mic repair | `ovi-debug` |
+| Build/test/commit/release/docs (`AGENTS.md`, README, AUDIT, TEST_PLAN) | `ovi-dev` |
+
 ## Development & Testing
 
 - **Env required**: `OPENCODE_VOICE_BACKEND` (`local`/`api`), `OPENAI_API_KEY` (if `api`), `OPENCODE_VOICE_LANGUAGE` (default `ru`). See `src/lib/config.ts`.
@@ -34,4 +48,4 @@ Voice control plugin for OpenCode supporting local (Whisper.cpp/Vosk/Python) and
 - **Logs**: `/tmp/opencode/stt_server.log` (server startup + every transcription), `voice-recognized.log` (source-tagged transcripts written by `logRecognized`/`_log_recognized`), `voice-stt.log` (plugin backend + audio levels), `voice-requests.log` (button HTTP calls), `/dev/shm/opencode-voice/` (recordings, RAM, auto-deleted).
 - **WSL2 / Microphone (verified)**: `/dev/snd` отсутствует в WSL2 по дизайну (`no soundcards found`). Рабочий путь — `PulseAudio` (`PULSE_SERVER=/mnt/wslg/PulseServer`). Для контейнера: `libasound2-plugins alsa-utils`, mount `/mnt/wslg/`, переменная `PULSE_SERVER`. USB-микрофон возможен (`usbipd-win`), но требует ядро с `snd-usb-audio`. Не проверять `/proc/asound/cards` — в WSL2 пуст. См. `.opencode/skills/ovi-models/SKILL.md`.
 - **Subagents**: `voice-builder`, `voice-stt` (configured in `opencode.json`).
-- **Skills**: `ovi-overview`, `ovi-plugin`, `ovi-server`, `ovi-extension`, `ovi-models`, `ovi-debug`, `ovi-dev` (in `.opencode/skills/`; names must match `^[a-z0-9]+(-[a-z0-9]+)*$`, so underscores are not allowed).
+- **Skills**: `ovi-overview`, `ovi-plugin`, `ovi-server`, `ovi-extension`, `ovi-models`, `ovi-debug`, `ovi-dev` — in `.opencode/skills/` (**versioned**; the rest of `.opencode/` is git-ignored). Names must match `^[a-z0-9]+(-[a-z0-9]+)*$` (no underscores), and `name:` must equal the folder name. Discovery happens at OpenCode startup via `skills.paths` in the global config.

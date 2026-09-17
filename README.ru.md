@@ -24,7 +24,7 @@
 - **Chrome/Chromium** — для кнопки 🎤 в веб-интерфейсе (TUI работает и без неё).
 - Опционально: NVIDIA GPU с WSL-совместимым драйвером — для `whisper.cpp` + CUDA.
 
-> **Папка `.opencode/` генерируется локально.** `sync-plugin.sh` создаёт `voice-opencode-plugin/.opencode/plugins/index.ts` и `.opencode/tui/voice.ts` (копирует `src/index.ts` и правит импорты). Папка в `.gitignore` — запускайте синк после каждого клона и после правок `src/index.ts`.
+> **Папка `.opencode/` генерируется локально.** `sync-plugin.sh` создаёт `voice-opencode-plugin/.opencode/plugins/index.ts` и `.opencode/tui/voice.ts` (копирует `src/index.ts` и правит импорты). Папка в `.gitignore` — запускайте синк после каждого клона и после правок `src/index.ts`. Исключение: `.opencode/skills/` (навыки `ovi-*` для агентов/контрибьюторов) версионируется.
 
 ## Установка
 
@@ -312,7 +312,7 @@ voice-opencode-plugin/
 ├── pytest.ini               # герметичные тесты сервера
 ├── AGENTS.md                # заметки по архитектуре для агентов/контрибьюторов
 ├── TEST_PLAN.md             # план ручного тестирования
-└── .opencode/               # генерируется sync-plugin.sh (в .gitignore)
+└── .opencode/               # генерируется sync-plugin.sh (в .gitignore; .opencode/skills/ версионируется)
 ```
 
 В корне репозитория также `README.md`, `README.ru.md`, `AUDIT.md` (аудит готовности к продакшену), `LICENSE` и CI в `.github/workflows/ci.yml`.
