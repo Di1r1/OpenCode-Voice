@@ -91,7 +91,7 @@ cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
 cp models/ggml-small.bin $DEST/
 ```
 
-Сервер сам обнаружит CLI и переключится на него (`curl -s localhost:8765/health` покажет `"backend":"whispercpp"`). Принудительно вернуть CPU: `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
+Сервер сам обнаружит CLI и переключится на него (`curl -s localhost:8765/health` покажет `"backend":"whispercpp"`). Команда `/voice` в плагине использует тот же CLI, если он есть (иначе faster-whisper на CPU). Принудительно вернуть CPU: `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
 
 ### 3. Плагин OpenCode
 

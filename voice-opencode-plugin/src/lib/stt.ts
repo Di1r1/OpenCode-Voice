@@ -7,7 +7,18 @@
  *        Если ни одно не доступно — бросает понятную ошибку.
  */
 
+import { existsSync } from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { config } from "./config"
+
+// whisper.cpp CLI (для GPU-режима; см. раздел GPU в README).
+const WHISPER_CPP_BIN = process.env.WHISPER_CPP_BIN ||
+  path.join(os.homedir(), ".local/share/opencode-voice/whisper/bin/whisper-cli")
+const WHISPER_CPP_MODEL = process.env.WHISPER_CPP_MODEL ||
+  path.join(os.homedir(), ".local/share/opencode-voice/whisper/ggml-small.bin")
+const WHISPER_CPP_LIB_DIR = process.env.WHISPER_CPP_LIB_DIR ||
+  path.join(os.homedir(), ".local/share/opencode-voice/whisper/bin")
 
 export interface TranscribeOptions {
   backend: "local" | "api"
@@ -70,24 +81,36 @@ async function transcribeApi(opts: { file: string; language: string; $: any }): 
 
 async function transcribeLocal(opts: { file: string; language: string; $: any }): Promise<string> {
   const { file, language, $ } = opts
+  const pref = (process.env.OPENCODE_VOICE_STT_BACKEND || "").toLowerCase()
 
-  // 1) faster-whisper (рекомендуется: не требует torch, работает на CPU)
-  if (await hasFasterWhisper($)) {
+  // 1) whisper.cpp с CUDA (GPU) — если собран (см. README, GPU acceleration)
+  if (pref !== "faster-whisper" && existsSync(WHISPER_CPP_BIN) && existsSync(WHISPER_CPP_MODEL)) {
+    try {
+      return await transcribeWhisperCpp({
+        file, language, $, cli: WHISPER_CPP_BIN, model: WHISPER_CPP_MODEL,
+      })
+    } catch (e) {
+      if (pref === "whispercpp") throw e
+    }
+  }
+
+  // 2) faster-whisper (рекомендуется для CPU: не требует torch)
+  if (pref !== "whispercpp" && await hasFasterWhisper($)) {
     return transcribeFasterWhisper({ file, language, $ })
   }
 
-  // 2) whisper.cpp CLI (whisper-cli / main)
+  // 3) whisper.cpp CLI из PATH (whisper-cli / main / whisper)
   const whisperCli = await which($, "whisper-cli") || await which($, "main") || await which($, "whisper")
   if (whisperCli) {
     return transcribeWhisperCpp({ file, language, $, cli: whisperCli })
   }
 
-  // 3) Python whisper (openai-whisper)
+  // 4) Python whisper (openai-whisper)
   if (await hasPythonWhisper($)) {
     return transcribePythonWhisper({ file, language, $ })
   }
 
-  // 4) vosk
+  // 5) vosk
   if (await hasVosk($)) {
     return transcribeVosk({ file, language, $ })
   }
@@ -174,23 +197,20 @@ print("".join(s.text for s in segments))
   return out.trim()
 }
 
-async function transcribeWhisperCpp(opts: { file: string; language: string; $: any; cli: string }): Promise<string> {
+async function transcribeWhisperCpp(opts: { file: string; language: string; $: any; cli: string; model?: string }): Promise<string> {
   const { file, language, $, cli } = opts
-  const model = process.env.WHISPER_MODEL_PATH || "./models/ggml-base.bin"
-  const lang = language && language !== "auto" ? (language === "ru" ? "ru" : "en") : null
-  if (lang) {
-    await $`${cli} -m ${model} -f ${file} -otxt -l ${lang}`.quiet()
-  } else {
-    await $`${cli} -m ${model} -f ${file} -otxt`.quiet()
-  }
-  const txt = `${file}.txt`
-  try {
-    const fs = await import("node:fs/promises")
-    const content = await fs.readFile(txt, "utf8")
-    return content.trim()
-  } catch {
-    throw new Error("whisper.cpp не выдал текст")
-  }
+  const model = opts.model || process.env.WHISPER_MODEL_PATH || "./models/ggml-base.bin"
+  const lang = language && language !== "auto" ? language : "auto"
+  // CUDA-рантайм + драйвер WSL должны быть в LD_LIBRARY_PATH.
+  const ld = [
+    WHISPER_CPP_LIB_DIR,
+    path.join(os.homedir(), "cuda-12.6/lib64"),
+    "/usr/lib/wsl/lib",
+  ].join(":")
+  const out = await $`env LD_LIBRARY_PATH=${ld} ${cli} -m ${model} -f ${file} -l ${lang} -nt -np`.text()
+  const text = out.trim()
+  if (!text) throw new Error("whisper.cpp не выдал текст")
+  return text
 }
 
 async function transcribePythonWhisper(opts: { file: string; language: string; $: any }): Promise<string> {

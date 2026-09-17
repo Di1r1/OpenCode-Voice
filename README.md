@@ -91,7 +91,7 @@ cp build/bin/whisper-cli build/bin/*.so* $DEST/bin/
 cp models/ggml-small.bin $DEST/
 ```
 
-The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` shows `"backend":"whispercpp"`). Force the CPU path with `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
+The server auto-detects the CLI and uses it (`curl -s localhost:8765/health` shows `"backend":"whispercpp"`). The `/voice` command in the plugin uses the same CLI when it is present (otherwise faster-whisper on CPU). Force the CPU path with `OPENCODE_VOICE_STT_BACKEND=faster-whisper`.
 
 ### 3. OpenCode plugin
 
