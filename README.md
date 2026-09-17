@@ -191,7 +191,7 @@ The server and the `/voice` command auto-detect the CLI (`/health` then shows `"
 
 | Command | Action |
 |---------|--------|
-| `/voice` | Push-to-talk: records until ~1.5 s of silence (hard cap 60 s), transcribes, inserts the text into the prompt |
+| `/voice` | Push-to-talk: records until ~1.5 s of silence (hard cap `OPENCODE_VOICE_MAX_RECORD_SECONDS`, default 300 s), transcribes, inserts the text into the prompt |
 | `/voice <file.wav>` | Transcribe a local audio file (`wav`/`mp3`/`m4a`/`ogg`/`flac`) |
 | `/voice backend [local\|api]` | Show/switch the STT backend |
 | `/voice lang [ru\|en\|auto]` | Show/switch the language |
@@ -227,6 +227,7 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_KEEP_AUDIO` | if set, do not delete recordings (debug) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | recreate the WSLg audio channel on a silent source | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | recovery timing | `90`, `8000`, `5000` ms |
+| `OPENCODE_VOICE_MAX_RECORD_SECONDS` | Hard cap on `/voice` recording length (seconds); it normally stops earlier — ~1.5 s after you stop speaking | `300` |
 
 ### STT server
 

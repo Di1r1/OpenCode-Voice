@@ -45,6 +45,15 @@ function micSource(): string {
 
 const DEFAULT_TMP_DIR = "/dev/shm/opencode-voice"
 
+/**
+ * Жёсткий предел длительности записи, с (env OPENCODE_VOICE_MAX_RECORD_SECONDS).
+ * Обычно запись завершается раньше — авто-стопом по тишине.
+ */
+export function maxRecordSeconds(): number {
+  const n = Number(process.env.OPENCODE_VOICE_MAX_RECORD_SECONDS ?? "300")
+  return Number.isFinite(n) && n > 0 ? n : 300
+}
+
 /** Каталог для записей: по умолчанию RAM (tmpfs), а не диск. */
 function recordingDir(): string {
   const dir = process.env.OPENCODE_VOICE_TMP_DIR || DEFAULT_TMP_DIR
@@ -94,7 +103,7 @@ export async function startPushToTalk($: any, opts: PttOptions = {}): Promise<Pt
   const sr = opts.sampleRate || SAMPLE_RATE
   const ch = opts.channels || CHANNELS
   // Жёсткий предел записи; обычно срабатывает авто-стоп по тишине раньше.
-  const max = opts.maxSeconds || 60
+  const max = opts.maxSeconds || maxRecordSeconds()
   const file = `${recordingDir()}/voice-ptt-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`
   scheduleDelete(file)
 
@@ -231,7 +240,7 @@ export interface PttEndInfo {
  * (silenceMs), либо по достижении лимита аудио/времени. Остановка мягкая.
  */
 export async function waitPushToTalkAuto(session: PttSession, opts: AutoStopOptions = {}): Promise<PttEndInfo> {
-  const maxAudioMs = (opts.maxAudioSeconds ?? 60) * 1000
+  const maxAudioMs = (opts.maxAudioSeconds ?? maxRecordSeconds()) * 1000
   const silenceMs = opts.silenceMs ?? 1500
   const minAudioMs = opts.minAudioMs ?? 1200
   const pollMs = opts.pollMs ?? 200

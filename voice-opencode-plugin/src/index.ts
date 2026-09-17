@@ -227,8 +227,8 @@ export const VoicePlugin: Plugin = async ({ client, $, directory }) => {
         const { beep } = await import("./lib/beep")
         const recordOnce = async () => {
           await beep($, 880, 120)
-          const s = await rec.startPushToTalk($, { maxSeconds: 60 })
-          const info = await rec.waitPushToTalkAuto(s, { maxAudioSeconds: 60 })
+          const s = await rec.startPushToTalk($)
+          const info = await rec.waitPushToTalkAuto(s)
           await beep($, 520, 140)
           await log("ptt recorded", { reason: info.reason, audioMs: Math.round(info.audioMs) })
           return s

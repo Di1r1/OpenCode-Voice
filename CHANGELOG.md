@@ -18,6 +18,8 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   are still taken from the page. Extension `1.0.10`.
 
 ### Added
+- `OPENCODE_VOICE_MAX_RECORD_SECONDS` (default `300`) — configurable hard cap for `/voice`
+  recordings; recording still stops on silence (~1.5 s), the cap only bounds long monologues.
 - This `CHANGELOG.md`.
 
 ## [0.3.0] - 2026-09-17

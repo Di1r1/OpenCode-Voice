@@ -191,7 +191,7 @@ cp models/ggml-medium.bin $DEST/
 
 | Команда | Действие |
 |---------|--------|
-| `/voice` | Push-to-talk: запись до ~1.5 с тишины (жёсткий предел 60 с), распознавание, текст в поле ввода |
+| `/voice` | Push-to-talk: запись до ~1.5 с тишины (жёсткий предел `OPENCODE_VOICE_MAX_RECORD_SECONDS`, по умолчанию 300 с), распознавание, текст в поле ввода |
 | `/voice <file.wav>` | Распознать локальный файл (`wav`/`mp3`/`m4a`/`ogg`/`flac`) |
 | `/voice backend [local\|api]` | Показать/переключить бэкенд |
 | `/voice lang [ru\|en\|auto]` | Показать/переключить язык |
@@ -227,6 +227,7 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_KEEP_AUDIO` | если задано — записи не удалять (отладка) | — |
 | `OPENCODE_VOICE_AUTO_RECOVER` | пересоздавать аудиоканал WSLg при молчащем источнике | `1` |
 | `OPENCODE_VOICE_AUTO_RECOVER_COOLDOWN`, `OPENCODE_VOICE_RECOVER_WAIT_WESTON`, `OPENCODE_VOICE_RECOVER_WAIT_PULSE` | тайминги восстановления | `90`, `8000`, `5000` мс |
+| `OPENCODE_VOICE_MAX_RECORD_SECONDS` | Жёсткий предел длины записи `/voice` (с); обычно запись завершается раньше — через ~1.5 с после окончания речи | `300` |
 
 ### STT-сервер
 
