@@ -174,8 +174,8 @@ curl -s 127.0.0.1:8765/health
 # тесты (микрофон и модель не нужны)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 44 теста сервера
-npm test                   # 41 тест (stripNonSpeech, пути whisper, состояние, E2E: пайплайн плагина + сервер по HTTP)
+python3 -m pytest          # 62 теста сервера (вкл. /speak)
+npm test                   # 74 теста (stripNonSpeech/cleanForSpeech, пути whisper, состояние, E2E: пайплайн плагина + сервер по HTTP)
 npm run typecheck
 bash sync-plugin.sh --check
 bash check-workflows.sh    # проверка YAML в .github/workflows/*.yml (нужен PyYAML)
@@ -345,6 +345,7 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `/tmp/opencode/voice-recognized.log` | каждый распознанный текст с `source=` (`command` = `/voice`, `button` = расширение), бэкендом, моделью, языком, длительностью |
 | `/tmp/opencode/voice-stt.log` | какой бэкенд/модель использовал плагин + уровни аудио |
 | `/tmp/opencode/voice-requests.log` | входящие HTTP-запросы (путь кнопки): `/beep`, `/transcribe`, `/record/*` |
+| `/tmp/opencode/voice-tts.log` | синтез TTS `/speak`: cache hit/miss, ошибки |
 | `/dev/shm/opencode-voice/` | записи (ОЗУ); удаляются через `OPENCODE_VOICE_RETAIN_SECONDS` |
 | `/mnt/wslg/wlog.log` | лог WSLg; строки `audin … error 1359` — известный артефакт завершения канала, не критерий |
 
@@ -384,16 +385,16 @@ PULSE_SERVER=unix:/mnt/wslg/PulseServer arecord -D pulse -f S16_LE -r 16000 -c 1
 
 ```
 voice-opencode-plugin/
-├── src/                     # код плагина (index.ts, lib/{config,stt,recorder,beep,server-launcher}.ts)
+├── src/                     # код плагина (index.ts, lib/{config,stt,recorder,beep,server-launcher,text,state,heal}.ts)
 ├── stt-server/              # Flask-сервер: stt_server.py, requirements*.txt, tests/
-├── extension/               # расширение Chrome (MV3): content.js, popup, manifest
+├── extension/               # расширение Chrome (MV3): content.js, tts.js, popup, manifest
 ├── doctor.sh                # диагностика/ремонт (/voice doctor)
 ├── fix-mic.sh               # пересоздание аудиоканала WSLg
 ├── setup.sh                 # установка одной командой (зависимости, опциональная GPU-сборка, подсказки)
 ├── sync-plugin.sh           # генерация локальных entry-точек (--check для CI)
 ├── check-workflows.sh       # проверка YAML в .github/workflows до пуша (ловит невалидный YAML)
 ├── pytest.ini               # герметичные тесты сервера
-├── shared/                  # единый источник истины для TS+Python (stt-spec.json, strip-cases.json)
+├── shared/                  # единый источник истины для TS+Python (stt-spec.json, strip-cases.json, tts-cases.json)
 └── .opencode/               # plugins/index.ts генерируется; tui/web/commands версионируются
 ```
 

@@ -174,8 +174,8 @@ curl -s 127.0.0.1:8765/health
 # tests (no microphone/model needed)
 cd voice-opencode-plugin
 pip install --no-input -r stt-server/requirements-dev.txt
-python3 -m pytest          # 44 server tests
-npm test                   # 41 tests (stripNonSpeech, whisper paths, state, E2E: plugin pipeline + server over HTTP)
+python3 -m pytest          # 62 server tests (incl. /speak)
+npm test                   # 74 tests (stripNonSpeech/cleanForSpeech, whisper paths, state, E2E: plugin pipeline + server over HTTP)
 npm run typecheck
 bash sync-plugin.sh --check
 bash check-workflows.sh    # validate .github/workflows/*.yml (needs PyYAML)
@@ -344,6 +344,7 @@ On short phrases auto language detection is unreliable — if you usually speak 
 | `/tmp/opencode/voice-recognized.log` | every recognized text with `source=` (`command` = `/voice`, `button` = extension), backend, model, language, duration |
 | `/tmp/opencode/voice-stt.log` | which backend/model the plugin used, plus audio levels |
 | `/tmp/opencode/voice-requests.log` | incoming HTTP requests (button path): `/beep`, `/transcribe`, `/record/*` |
+| `/tmp/opencode/voice-tts.log` | TTS `/speak` synthesis: cache hit/miss, errors |
 | `/dev/shm/opencode-voice/` | recordings (RAM); deleted after `OPENCODE_VOICE_RETAIN_SECONDS` |
 | `/mnt/wslg/wlog.log` | WSLg log; `audin … error 1359` lines are a known channel teardown artifact, not a criterion |
 
@@ -383,16 +384,16 @@ A stuck server-side recording returns `409`. The extension recovers automaticall
 
 ```
 voice-opencode-plugin/
-├── src/                     # plugin code (index.ts, lib/{config,stt,recorder,beep,server-launcher}.ts)
+├── src/                     # plugin code (index.ts, lib/{config,stt,recorder,beep,server-launcher,text,state,heal}.ts)
 ├── stt-server/              # Flask server: stt_server.py, requirements*.txt, tests/
-├── extension/               # Chrome extension (MV3): content.js, popup, manifest
+├── extension/               # Chrome extension (MV3): content.js, tts.js, popup, manifest
 ├── doctor.sh                # diagnostics/repair (/voice doctor)
 ├── fix-mic.sh               # recreate the WSLg audio channel
 ├── setup.sh                 # one-command install (deps, optional GPU build, config hints)
 ├── sync-plugin.sh           # generate the local plugin/TUI entry points (--check for CI)
 ├── check-workflows.sh       # validate .github/workflows YAML before pushing (catches startup-breaking YAML)
 ├── pytest.ini               # hermetic server tests
-├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json)
+├── shared/                  # single source of truth for TS+Python (stt-spec.json, strip-cases.json, tts-cases.json)
 └── .opencode/               # plugins/index.ts is generated; tui/web/commands are versioned
 ```
 
