@@ -398,6 +398,10 @@
 
     function speak(text) {
       if (settings.ttsEngine === "server" && serverUrl) { speakServer(text); return; }
+      speakBrowser(text);
+    }
+
+    function speakBrowser(text) {
       var synth = win.speechSynthesis;
       if (!synth) { dbg("no speechSynthesis"); toast("Синтез речи недоступен", "error", 4000); return; }
       // До первого действия пользователя Chrome блокирует синтез (not-allowed);
@@ -550,7 +554,9 @@
         speaking = false;
         if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
         dbg("server fallback -> browser", why);
-        speak(text);
+        // Важно: напрямую в браузерный синтез, а не через speak() —
+        // иначе роутер вернёт нас в speakServer и будет бесконечный цикл.
+        speakBrowser(text);
       };
       try {
         var payload = { text: text, mode: "full", rate: Number(settings.ttsRate) || 1.0 };

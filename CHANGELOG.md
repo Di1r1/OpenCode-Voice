@@ -36,6 +36,10 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   separate **server voice** dropdown (`ttsServerVoice`), so the browser voice choice is no
   longer sent to `/speak` by mistake (unknown name → `400` → silent browser fallback).
   Extension `1.0.30`.
+- **Server→browser TTS fallback loop:** on any `/speak` error the fallback called the
+  `speak()` router, which re-entered the server path — an infinite `/speak` request loop
+  (tens of thousands of hits) that never reached browser speech. The fallback now calls
+  the browser synthesizer directly. Extension `1.0.31`.
 - **npm packaging:** `extension/tts.js`, `shared/tts-cases.json` and `shared/strip-cases.json`
   were missing from `files` in `package.json`, so the published tarball shipped without TTS
   (30 files). Now 33 files — the browser TTS engine and the shared parity cases are included.
