@@ -58,6 +58,7 @@ sendHotkeyEl.addEventListener('change', () => {
 
 // Озвучка ответов ассистента (ключи читают content.js/tts.js).
 const ttsEl = document.getElementById('tts');
+const ttsEngineEl = document.getElementById('ttsEngine');
 const ttsModeEl = document.getElementById('ttsMode');
 const ttsLangEl = document.getElementById('ttsLang');
 const ttsLocalOnlyEl = document.getElementById('ttsLocalOnly');
@@ -88,9 +89,10 @@ if (typeof speechSynthesis !== 'undefined') {
 }
 
 chrome.storage.local.get(
-  { tts: false, ttsMode: 'brief', ttsLang: 'auto', ttsVoice: '', ttsLocalOnly: true, ttsRate: 1.0, ttsDebug: false },
+  { tts: false, ttsEngine: 'browser', ttsMode: 'brief', ttsLang: 'auto', ttsVoice: '', ttsLocalOnly: true, ttsRate: 1.0, ttsDebug: false },
   (v) => {
     ttsEl.checked = v.tts === true;
+    ttsEngineEl.value = v.ttsEngine || 'browser';
     ttsModeEl.value = v.ttsMode || 'brief';
     ttsLangEl.value = v.ttsLang || 'auto';
     ttsLocalOnlyEl.checked = v.ttsLocalOnly !== false;
@@ -102,6 +104,7 @@ chrome.storage.local.get(
   }
 );
 ttsEl.addEventListener('change', () => chrome.storage.local.set({ tts: ttsEl.checked }));
+ttsEngineEl.addEventListener('change', () => chrome.storage.local.set({ ttsEngine: ttsEngineEl.value }));
 ttsModeEl.addEventListener('change', () => chrome.storage.local.set({ ttsMode: ttsModeEl.value }));
 ttsLangEl.addEventListener('change', () => chrome.storage.local.set({ ttsLang: ttsLangEl.value }));
 ttsLocalOnlyEl.addEventListener('change', () => chrome.storage.local.set({ ttsLocalOnly: ttsLocalOnlyEl.checked }));

@@ -634,7 +634,13 @@ log('Content script loaded, waiting for UI...');
 // Озвучка ответов ассистента (аддитивный слой; по умолчанию выключена в popup).
 try {
   if (globalThis.OpenCodeVoiceTTS && typeof globalThis.OpenCodeVoiceTTS.start === 'function') {
-    globalThis.OpenCodeVoiceTTS.start({ getPhase: () => uiPhase, toast: showToast, log });
+    globalThis.OpenCodeVoiceTTS.start({
+      getPhase: () => uiPhase,
+      toast: showToast,
+      log,
+      serverUrl: STT_SERVER,
+      authHeaders,
+    });
   }
 } catch (err) {
   log('TTS init failed', err);
@@ -644,7 +650,7 @@ try {
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.28 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.29 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

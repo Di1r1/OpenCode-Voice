@@ -34,6 +34,13 @@
   <label class="toggle"><input type="checkbox" id="sendHotkey"> Alt+X — запись и сразу отправка</label>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0">
   <label class="toggle"><input type="checkbox" id="tts"> 🔊 Озвучивать ответы ассистента</label>
+  <label class="toggle" style="display:block">Движок озвучки
+    <select id="ttsEngine"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="browser">Браузер (Web Speech)</option>
+      <option value="server">Сервер (Piper; нужен OPENCODE_VOICE_TTS=1)</option>
+    </select>
+  </label>
   <label class="toggle" style="display:block">Режим озвучки
     <select id="ttsMode"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">

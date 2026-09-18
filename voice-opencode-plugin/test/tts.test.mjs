@@ -30,6 +30,7 @@ test("tts.js exposes helpers", () => {
   for (const name of ["cleanForSpeech", "detectLang", "pickVoice", "briefSentences", "chunkSentences", "dedupKey", "comboMatches", "start"]) {
     assert.equal(typeof TTS[name], "function", `missing ${name}`)
   }
+  assert.equal(TTS.DEFAULTS.ttsEngine, "browser", "engine defaults to the browser (opt-in server)")
 })
 
 // Кросс-паритет канона (text.ts) и браузерной копии (tts.js) на общих кейсах.

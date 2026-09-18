@@ -159,6 +159,7 @@
     tts: false,
     ttsMode: "brief",
     ttsLang: "auto",
+    ttsEngine: "browser",
     ttsVoice: "",
     ttsRate: 1.0,
     ttsLocalOnly: true,
@@ -181,6 +182,8 @@
     var log = deps.log || function () {};
     var toast = deps.toast || function () {};
     var getPhase = deps.getPhase || function () { return "idle"; };
+    var serverUrl = String(deps.serverUrl || "").replace(/\/+$/, "");
+    var authHeaders = deps.authHeaders || function () { return {}; };
     var settings = Object.assign({}, DEFAULTS);
     var logTail = [];
     var stats = { events: 0, lastType: "", lastSid: "", finalized: 0, lastSkip: "", sourceState: "none" };
@@ -204,6 +207,9 @@
     var spoken = Object.create(null);
     var messages = Object.create(null); // messageID -> { role, completed, order, parts }
     var maxTimer = null;
+    var audioCtx = null;
+    var audioEl = null;
+    var serverSource = null;
 
     function loadSettings(cb) {
       try {
@@ -376,6 +382,8 @@
     function stopSpeaking(show) {
       pending = null;
       if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
+      if (serverSource) { try { serverSource.stop(); } catch (e) {} serverSource = null; }
+      if (audioEl) { try { audioEl.pause(); } catch (e) {} audioEl = null; }
       if (win.speechSynthesis) win.speechSynthesis.cancel();
       if (speaking) { speaking = false; if (show) toast("⏹ Стоп", "warning", 1200); }
     }
@@ -388,6 +396,7 @@
     }
 
     function speak(text) {
+      if (settings.ttsEngine === "server" && serverUrl) { speakServer(text); return; }
       var synth = win.speechSynthesis;
       if (!synth) { dbg("no speechSynthesis"); toast("Синтез речи недоступен", "error", 4000); return; }
       // До первого действия пользователя Chrome блокирует синтез (not-allowed);
@@ -479,6 +488,98 @@
       setTimeout(function () { if (!done) onVoices(); }, 700);
     }
 
+    // Прайминг аудио: в content-скрипте его раньше не было (бипы ушли на сервер).
+    // Нужен только серверному движку — Web Speech autoplay-гейтом не ограничен.
+    function primeAudio() {
+      try {
+        var AC = win.AudioContext || win.webkitAudioContext;
+        if (!AC) return;
+        if (!audioCtx) audioCtx = new AC();
+        if (audioCtx.state === "suspended") audioCtx.resume().catch(function () {});
+      } catch (e) {}
+    }
+
+    function playBuffer(buf, onEnd, onError) {
+      primeAudio();
+      var fail = function (why) { if (onError) onError(why); };
+      if (audioCtx) {
+        try {
+          Promise.resolve(audioCtx.decodeAudioData(buf.slice(0))).then(function (decoded) {
+            try {
+              var src = audioCtx.createBufferSource();
+              src.buffer = decoded;
+              src.connect(audioCtx.destination);
+              serverSource = src;
+              src.onended = function () {
+                if (serverSource === src) serverSource = null;
+                if (onEnd) onEnd();
+              };
+              src.start(0);
+            } catch (e) { fail("start: " + (e && e.message)); }
+          }).catch(function () { fail("decode"); });
+          return;
+        } catch (e) {}
+      }
+      try {
+        var url = win.URL.createObjectURL(new win.Blob([buf], { type: "audio/wav" }));
+        var el = new win.Audio(url);
+        audioEl = el;
+        el.onended = function () {
+          try { win.URL.revokeObjectURL(url); } catch (e) {}
+          if (audioEl === el) audioEl = null;
+          if (onEnd) onEnd();
+        };
+        el.onerror = function () { fail("audio element"); };
+        var pr = el.play();
+        if (pr && pr.catch) pr.catch(function (e) { fail("play: " + (e && e.message)); });
+      } catch (e) { fail(String(e)); }
+    }
+
+    // Серверный движок: POST /speak -> WAV (играет браузер). При любой ошибке —
+    // фолбэк на Web Speech, чтобы ответ всё равно прозвучал.
+    function speakServer(text) {
+      if (!hasUserActivation()) { dbg("no user activation, defer (server)"); pending = text; return; }
+      speaking = true;
+      toast("🔊 Говорю… (сервер)", "info", 2000);
+      dbg("speak server", { chars: text.length, voice: settings.ttsVoice || null });
+      var secs = Number(settings.ttsMaxSeconds) || 0;
+      if (secs > 0) maxTimer = setTimeout(function () { stopSpeaking(true); }, secs * 1000);
+      var fallback = function (why) {
+        if (!speaking) return;
+        speaking = false;
+        if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
+        dbg("server fallback -> browser", why);
+        speak(text);
+      };
+      try {
+        var payload = { text: text, mode: "full", rate: Number(settings.ttsRate) || 1.0 };
+        if (settings.ttsVoice) payload.voice = settings.ttsVoice;
+        if (settings.ttsLang !== "auto") payload.lang = settings.ttsLang;
+        win.fetch(serverUrl + "/speak", {
+          method: "POST",
+          headers: Object.assign(
+            { "Content-Type": "application/json", "X-Voice-Source": "tts" },
+            authHeaders()
+          ),
+          body: JSON.stringify(payload)
+        }).then(function (r) {
+          if (!r.ok) {
+            return r.json().catch(function () { return {}; }).then(function (b) {
+              fallback("http " + r.status + (b && b.error ? " " + b.error : ""));
+              return null;
+            });
+          }
+          return r.arrayBuffer();
+        }).then(function (buf) {
+          if (!buf || !speaking) return;
+          playBuffer(buf, function () {
+            if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
+            speaking = false;
+          }, fallback);
+        }).catch(function (e) { fallback("fetch: " + (e && e.message)); });
+      } catch (e) { fallback("throw: " + e); }
+    }
+
     function onKeyDown(e) {
       if (!speaking) return; // Ctrl+C перехватываем только пока идёт речь
       if (comboMatches(e, settings.ttsHotkey)) {
@@ -519,6 +620,8 @@
     loadSettings(function () {
       try {
         win.addEventListener("keydown", onKeyDown, true);
+        win.addEventListener("pointerdown", primeAudio, true);
+        win.addEventListener("keydown", primeAudio, true);
         if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
           chrome.storage.onChanged.addListener(function (changes, area) {
             if (area !== "local") return;
