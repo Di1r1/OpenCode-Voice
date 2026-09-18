@@ -29,6 +29,11 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   - Popup: toggle, engine (browser/server), mode, language, voice, local-only, speed, debug log.
   - Tests: `pytest` 62 (+12), `npm test` 74.
 
+### Fixed
+- **npm packaging:** `extension/tts.js`, `shared/tts-cases.json` and `shared/strip-cases.json`
+  were missing from `files` in `package.json`, so the published tarball shipped without TTS
+  (30 files). Now 33 files — the browser TTS engine and the shared parity cases are included.
+
 ## [0.3.1] - 2026-09-17
 
 ### Fixed
