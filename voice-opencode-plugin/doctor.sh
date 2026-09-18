@@ -77,6 +77,28 @@ else
   say "$BAD" "health недоступен"
 fi
 
+# 2b) TTS (серверный синтез) ------------------------------------------------
+if [[ -n "$HEALTH" ]]; then
+  TTS_LINE="$(python3 - "$HEALTH" <<'PY' 2>/dev/null || true
+import sys, json
+try:
+    t = json.loads(sys.argv[1]).get("tts") or {}
+except Exception:
+    t = {}
+print("enabled=%s available=%s engine=%s voice=%s" % (
+    t.get("enabled"), t.get("available"), t.get("engine") or "?", t.get("voice") or "?"))
+PY
+)"
+  if [[ "$TTS_LINE" == *"enabled=True available=True"* ]]; then
+    say "$OK" "TTS: движок готов (${TTS_LINE#enabled=True available=True })"
+  elif [[ "$TTS_LINE" == *"enabled=True"* ]]; then
+    say "$WARN" "TTS включён, но движок недоступен ($TTS_LINE) — ./setup.sh --tts"
+    issues+=("tts")
+  else
+    say "…" "TTS выключен (${TTS_LINE:-n/a}); включение: OPENCODE_VOICE_TTS=1 + ./setup.sh --tts"
+  fi
+fi
+
 # 3) CORS preflight ---------------------------------------------------------
 CORS="$(curl -s -m 5 -X OPTIONS "$BASE/beep" \
   -H "Origin: ${EXT_ORIGIN}" -H 'Access-Control-Request-Method: POST' \
@@ -145,7 +167,7 @@ else
 fi
 
 # 6) Свежесть логов ---------------------------------------------------------
-for f in "$REQ_LOG" "$REC_LOG" "$LOG"; do
+for f in "$REQ_LOG" "$REC_LOG" "$LOG" "/tmp/opencode/voice-tts.log"; do
   if [[ -f "$f" ]]; then
     say "…" "$(basename "$f"): последнее изменение $(date -r "$f" '+%H:%M:%S' 2>/dev/null), размер $(stat -c%s "$f") б"
   fi

@@ -271,7 +271,8 @@ def _tts_status() -> dict:
 
 def _log_tts(event: str, extra: str = ""):
     try:
-        with open("/tmp/opencode/voice-tts.log", "a") as f:
+        log_file = os.getenv("OPENCODE_VOICE_TTS_LOG", "/tmp/opencode/voice-tts.log")
+        with open(log_file, "a") as f:
             f.write(
                 f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {event} {extra}\n"
             )

@@ -9,6 +9,7 @@
 # Использование:
 #   ./setup.sh                     # CPU: зависимости + проверки
 #   ./setup.sh --gpu               # + собрать whisper.cpp (CUDA) + модель
+#   ./setup.sh --tts               # + скачать Piper и голос (серверная озвучка, POST /speak)
 #   ./setup.sh --model-size small  # размер ggml-модели для --gpu (tiny|base|small|medium|large-v3)
 #   ./setup.sh --check             # только проверить окружение и показать план (ничего не менять)
 #   ./setup.sh --configure         # показать, а с флагом --write-config — вписать пути в ~/.config/opencode/*.json (с бэкапом)
@@ -17,7 +18,8 @@
 #
 # Переменные: OPENCODE_VOICE_HOME (по умолчанию ~/.local/share/opencode-voice),
 #             OPENCODE_VOICE_WHISPER_DIR (по умолчанию $OPENCODE_VOICE_HOME/whisper),
-#             CUDA_HOME/CUDA_PATH (если CUDA Toolkit в нестандартном месте).
+#             CUDA_HOME/CUDA_PATH (если CUDA Toolkit в нестандартном месте);
+#             OPENCODE_VOICE_TTS_HOME/VOICES_DIR/VOICE (для --tts; голос по умолчанию ru_RU-irina-medium).
 
 set -euo pipefail
 
@@ -31,10 +33,16 @@ DO_PIP=1
 DO_SYNC=1
 CONFIGURE=0
 WRITE_CONFIG=0
+DO_TTS=0
 MODEL_SIZE="${WHISPER_CPP_MODEL_SIZE:-medium}"
 
 HOME_DIR="${OPENCODE_VOICE_HOME:-$HOME/.local/share/opencode-voice}"
 WHISPER_DIR="${OPENCODE_VOICE_WHISPER_DIR:-$HOME_DIR/whisper}"
+TTS_DIR="${OPENCODE_VOICE_TTS_HOME:-$HOME_DIR/tts}"
+TTS_PIPER_DIR="$TTS_DIR/piper"
+TTS_VOICES_DIR="${OPENCODE_VOICE_TTS_VOICES_DIR:-$TTS_DIR/voices}"
+TTS_VOICE="${OPENCODE_VOICE_TTS_VOICE:-ru_RU-irina-medium}"
+TTS_VOICE_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium"
 OPENCODE_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 
 C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_OFF=$'\033[0m'
@@ -48,6 +56,7 @@ for arg in "$@"; do
   case "$arg" in
     --gpu) MODE_GPU=1 ;;
     --cpu) MODE_GPU=0 ;;
+    --tts) DO_TTS=1 ;;
     --check) CHECK_ONLY=1 ;;
     --yes|-y) ASSUME_YES=1 ;;
     --no-pip) DO_PIP=0 ;;
@@ -56,7 +65,7 @@ for arg in "$@"; do
     --write-config) CONFIGURE=1; WRITE_CONFIG=1 ;;
     --model-size) shift; MODEL_SIZE="${1:?--model-size требует значение}" ;;
     --model-size=*) MODEL_SIZE="${arg#*=}" ;;
-    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) err "неизвестный флаг: $arg (см. --help)"; exit 2 ;;
   esac
 done
@@ -74,6 +83,7 @@ echo "OpenCode Voice — установка"
 info "репозиторий:  $REPO"
 info "модель/каталог: $WHISPER_DIR (размер: $MODEL_SIZE)"
 [ "$MODE_GPU" = "1" ] && info "режим: GPU (whisper.cpp + CUDA)" || info "режим: CPU (faster-whisper)"
+[ "$DO_TTS" = "1" ] && info "TTS: Piper + голос $TTS_VOICE -> $TTS_DIR"
 echo
 
 # ---------------------------------------------------------------------------
@@ -99,6 +109,7 @@ have node && ok "node $(node -v 2>/dev/null)" || warn "node не найден �
 need npm "нужен для плагина"
 need ffmpeg "нужен для конвертации WebM/Opus из браузера"
 need curl "нужен для скачивания модели (--gpu)"
+if [ "$DO_TTS" = "1" ]; then need tar "нужен для распаковки Piper (--tts)"; fi
 if have arecord; then ok "arecord (alsa-utils)"; else
   if in_wsl; then warn "arecord не найден — в WSLg: sudo apt-get install -y alsa-utils libasound2-plugins"; else
     warn "arecord не найден — sudo apt-get install -y alsa-utils"; fi
@@ -135,6 +146,7 @@ if [ "$CHECK_ONLY" = "1" ]; then
   n=0
   if [ "$DO_PIP" = "1" ]; then n=$((n+1)); echo "  $n. python3 -m pip install -r voice-opencode-plugin/stt-server/requirements.txt (faster-whisper)"; fi
   if [ "$MODE_GPU" = "1" ]; then n=$((n+1)); echo "  $n. собрать whisper.cpp с CUDA и скачать ggml-$MODEL_SIZE.bin в $WHISPER_DIR"; fi
+  if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. скачать Piper и голос $TTS_VOICE в $TTS_DIR"; fi
   if [ "$DO_SYNC" = "1" ]; then n=$((n+1)); echo "  $n. bash voice-opencode-plugin/sync-plugin.sh (сгенерировать entry-файлы)"; fi
   n=$((n+1)); echo "  $n. показать строки для ~/.config/opencode/opencode.json и tui.json"
   n=$((n+1)); echo "  $n. bash voice-opencode-plugin/doctor.sh"
@@ -231,6 +243,55 @@ if [ "$MODE_GPU" = "1" ]; then
       warn "whisper-cli не запустился — проверьте CUDA-драйвер/библиотеки (doctor.sh)"
     fi
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3b. TTS: Piper + голос (--tts)
+# ---------------------------------------------------------------------------
+if [ "$DO_TTS" = "1" ]; then
+  echo
+  echo "== TTS: Piper + голос =="
+  mkdir -p "$TTS_PIPER_DIR" "$TTS_VOICES_DIR"
+
+  PIPER_BIN="$TTS_PIPER_DIR/piper"
+  if [ -x "$PIPER_BIN" ]; then
+    ok "piper уже установлен: $PIPER_BIN"
+  else
+    PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
+    info "скачиваю Piper ($PIPER_URL)"
+    if curl -fL --retry 3 -o "$TTS_DIR/piper.tar.gz" "$PIPER_URL" \
+       && tar -xzf "$TTS_DIR/piper.tar.gz" -C "$TTS_DIR"; then
+      rm -f "$TTS_DIR/piper.tar.gz"
+      if [ -x "$PIPER_BIN" ]; then ok "piper: $PIPER_BIN"; else
+        warn "Piper распакован, но бинарь не найден — проверьте $TTS_DIR/piper"
+      fi
+    else
+      rm -f "$TTS_DIR/piper.tar.gz"
+      warn "не удалось скачать Piper — вручную: https://github.com/rhasspy/piper/releases"
+    fi
+  fi
+
+  if [ "$TTS_VOICE" = "ru_RU-irina-medium" ]; then
+    for ext in onnx onnx.json; do
+      VOICE_FILE="$TTS_VOICES_DIR/$TTS_VOICE.$ext"
+      if [ -s "$VOICE_FILE" ]; then ok "голос уже есть: $VOICE_FILE"; continue; fi
+      info "скачиваю $TTS_VOICE.$ext"
+      if curl -fL --retry 3 -o "$VOICE_FILE.part" "$TTS_VOICE_URL_BASE.$ext"; then
+        mv -f "$VOICE_FILE.part" "$VOICE_FILE"; ok "$VOICE_FILE"
+      else
+        rm -f "$VOICE_FILE.part"; warn "не удалось скачать $TTS_VOICE.$ext"
+      fi
+    done
+  else
+    info "голос $TTS_VOICE не скачивается автоматически — положите $TTS_VOICE.onnx(.json) в $TTS_VOICES_DIR"
+  fi
+
+  echo
+  info "серверный TTS выключен по умолчанию — включите переменными:"
+  echo "    OPENCODE_VOICE_TTS=1"
+  echo "    OPENCODE_VOICE_TTS_BIN=$PIPER_BIN"
+  echo "    OPENCODE_VOICE_TTS_VOICES_DIR=$TTS_VOICES_DIR"
+  echo "  В popup расширения выберите движок «Сервер»; диагностика — ./doctor.sh"
 fi
 
 # ---------------------------------------------------------------------------

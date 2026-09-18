@@ -215,6 +215,39 @@ cp models/ggml-medium.bin $DEST/
 
 Сервер и команда `/voice` сами найдут CLI (`/health` покажет `"backend":"whispercpp"`, `"device":"cuda"`). Если GPU нет (нет `libcuda`), оба откатятся на `faster-whisper` (CPU). Принудительно: `/voice device cpu|gpu|auto` или `OPENCODE_VOICE_DEVICE`; legacy-алиас `OPENCODE_VOICE_STT_BACKEND=faster-whisper` тоже работает.
 
+## Озвучка ответов (опционально, по умолчанию выключена)
+
+OpenCode Voice умеет читать ответы ассистента вслух. Слой строго аддитивный: при выключенном
+тумблере (по умолчанию) ничего не меняется.
+
+Два движка:
+
+- **Браузер** (по умолчанию) — Web Speech API; сервер и модель не нужны. При включённом «только
+  локальные голоса» берутся лишь `localService === true`; удалённые голоса могут отправлять текст
+  производителю браузера.
+- **Сервер** — `POST /speak` на локальном STT-сервере возвращает WAV, который играет браузер;
+  голоса офлайн-[Piper](https://github.com/rhasspy/piper). Включается `OPENCODE_VOICE_TTS=1`.
+
+Установка серверного движка (Piper + русский голос) в `$OPENCODE_VOICE_HOME/tts`:
+
+```bash
+./setup.sh --tts           # скачает piper + ru_RU-irina-medium (~60 МБ)
+export OPENCODE_VOICE_TTS=1
+# OPENCODE_VOICE_TTS_BIN=$HOME/.local/share/opencode-voice/tts/piper/piper
+# OPENCODE_VOICE_TTS_VOICES_DIR=$HOME/.local/share/opencode-voice/tts/voices
+```
+
+Затем в popup расширения включите **🔊 Озвучивать ответы ассистента** и выберите движок
+(**Браузер**/**Сервер**), режим (**кратко** — первые предложения + строки с ошибками / **полностью**),
+язык, голос и скорость. Настройки хранятся в `chrome.storage.local` (ключи `tts`, `ttsEngine`,
+`ttsMode`, `ttsLang`, `ttsVoice`, `ttsRate`, `ttsLocalOnly`) и применяются без перезагрузки.
+`Ctrl+C` останавливает речь только пока она идёт; начало записи ставит её на паузу.
+
+Текст берётся из same-origin API web-UI (`/api/session`, `/session/{id}/message`), а не из DOM.
+Серверный маршрут переиспользует токен/лимиты/CORS, держит LRU-кэш WAV и отдаёт `501`, когда
+выключен — расширение тогда переключается на браузерный голос. Лог синтеза:
+`/tmp/opencode/voice-tts.log`.
+
 ## Использование
 
 ### Команды `/voice`

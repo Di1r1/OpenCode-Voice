@@ -643,6 +643,8 @@ def _reset_tts(monkeypatch):
     monkeypatch.setattr(srv, "TTS_CACHE_MAX_MB", 64)
     monkeypatch.delenv("OPENCODE_VOICE_TTS_BIN", raising=False)
     monkeypatch.delenv("OPENCODE_VOICE_TTS_VOICES_DIR", raising=False)
+    # Never write into the real TTS log from tests.
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_LOG", "/dev/null")
     srv._tts_sem = srv.threading.Semaphore(1)
     with srv._tts_cache_lock:
         srv._tts_cache.clear()

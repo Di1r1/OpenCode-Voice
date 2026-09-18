@@ -10,6 +10,25 @@ Version in code: `PLUGIN_VERSION` (`voice-opencode-plugin/src/lib/config.ts`), `
 (`voice-opencode-plugin/stt-server/stt_server.py`), `package.json` and `/health` (field `version`).
 The Chrome extension is versioned independently (`voice-opencode-plugin/extension/manifest.json`).
 
+## [Unreleased]
+
+### Added
+- **Text-to-speech (optional, off by default):** assistant answers can be read aloud.
+  - `extension/tts.js` (content script, loaded before `content.js`) reads the final assistant
+    message from the same-origin web-UI API (`/api/session`, `/session/{id}/message`; optional
+    `/api/event` SSE), not by scraping the DOM. Modes `brief` (first sentences + error lines) and
+    `full`, dedup by `messageID`+hash, sentence chunking, `Ctrl+C` stop only while speaking, pause
+    while recording, voice picker. Gate: OpenCode UI (`prompt-input` + live `/session`).
+    Extension `1.0.29`.
+  - Server engine: `POST /speak` (JSON `{text,voice?,rate?,mode?}` -> `audio/wav`; the browser plays
+    it) with offline Piper voices, text over stdin (no shell), a voice whitelist, an LRU WAV cache,
+    a synthesis semaphore, and reuse of token/limits/CORS; `501` when disabled. Opt-in via
+    `OPENCODE_VOICE_TTS=1`; install with `./setup.sh --tts`. `_play_file` extracted for TUI/fallback.
+  - Shared `cleanForSpeech` canon in `src/lib/text.ts` with Python and browser mirrors
+    (`shared/tts-cases.json`; cross-parity test via `node:vm`).
+  - Popup: toggle, engine (browser/server), mode, language, voice, local-only, speed, debug log.
+  - Tests: `pytest` 62 (+12), `npm test` 74.
+
 ## [0.3.1] - 2026-09-17
 
 ### Fixed

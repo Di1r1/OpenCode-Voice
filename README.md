@@ -215,6 +215,38 @@ cp models/ggml-medium.bin $DEST/
 
 The server and the `/voice` command auto-detect the CLI (`/health` then shows `"backend":"whispercpp"`, `"device":"cuda"`). If there is no GPU (no `libcuda`), both fall back to `faster-whisper` on CPU. Force a device with `/voice device cpu|gpu|auto` or `OPENCODE_VOICE_DEVICE`; the legacy alias `OPENCODE_VOICE_STT_BACKEND=faster-whisper` also works.
 
+## Text-to-speech (optional, off by default)
+
+OpenCode Voice can read assistant answers aloud. It is strictly additive: with the toggle off (the
+default) nothing changes.
+
+Two engines:
+
+- **Browser** (default) — the Web Speech API; no server or model needed. With "local only" on, only
+  voices where `localService === true` are used; remote voices may send the text to the browser vendor.
+- **Server** — `POST /speak` on the local STT server returns a WAV that the browser plays, using
+  offline [Piper](https://github.com/rhasspy/piper) voices. Enable with `OPENCODE_VOICE_TTS=1`.
+
+Install the server engine (Piper + a Russian voice) into `$OPENCODE_VOICE_HOME/tts`:
+
+```bash
+./setup.sh --tts           # downloads piper + ru_RU-irina-medium (~60 MB)
+export OPENCODE_VOICE_TTS=1
+# OPENCODE_VOICE_TTS_BIN=$HOME/.local/share/opencode-voice/tts/piper/piper
+# OPENCODE_VOICE_TTS_VOICES_DIR=$HOME/.local/share/opencode-voice/tts/voices
+```
+
+Then open the extension popup, turn on **🔊 Voice assistant answers** and pick the engine
+(**Browser**/**Server**), mode (**brief** — first sentences plus any error lines / **full**),
+language, voice and speed. Settings live in `chrome.storage.local` (keys `tts`, `ttsEngine`,
+`ttsMode`, `ttsLang`, `ttsVoice`, `ttsRate`, `ttsLocalOnly`) and apply without a reload. `Ctrl+C`
+stops speech only while it is speaking; starting a recording pauses it.
+
+The text comes from the same-origin web-UI API (`/api/session`, `/session/{id}/message`), not from
+DOM scraping. The server route reuses the usual token/limits/CORS, keeps an LRU WAV cache and
+returns `501` when disabled — the extension then falls back to the browser voice. Synthesis log:
+`/tmp/opencode/voice-tts.log`.
+
 ## Usage
 
 ### `/voice` commands
