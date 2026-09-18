@@ -43,6 +43,17 @@ _FALLBACK_SPEC = {
     "silence": {"peak": 700, "rms": 80},
     "whisperCppExtraFlags": ["-mc", "0", "-sns"],
     "defaultModelByDevice": {"gpu": "medium", "cpu": "small"},
+    "tts": {
+        "engine": "piper",
+        "voice": "ru_RU-irina-medium",
+        "rate": 1.0,
+        "maxChars": 300,
+        "briefSentences": 2,
+        "mode": "brief",
+        "lang": "auto",
+        "localOnly": True,
+        "maxSeconds": 60,
+    },
 }
 
 
@@ -559,6 +570,64 @@ def _strip_non_speech(text: str) -> str:
     t = _SYMBOLS_RE.sub(" ", t)                   # ноты (из shared/stt-spec.json)
     t = re.sub(r"\s{2,}", " ", t)
     t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+    return t.strip()
+
+
+# --- TTS: чистка markdown перед озвучкой (паритет с cleanForSpeech в src/lib/text.ts) ---
+_CODE_PLACEHOLDER = "…код…"
+_FENCE_RE = re.compile(r"```[\s\S]*?```")
+_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_AUTOLINK_RE = re.compile(r"<(https?://[^>\s]+)>")
+_URL_RE = re.compile(r"https?://[^\s)]+")
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
+_HR_RE = re.compile(r"^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", re.MULTILINE)
+_QUOTE_RE = re.compile(r"^\s{0,3}>\s?", re.MULTILINE)
+_LIST_RE = re.compile(r"^\s{0,3}(?:[-*+]|\d+[.)])\s+", re.MULTILINE)
+_TABLE_SEP_RE = re.compile(r"^\s*\|?[:\s|-]+\|?\s*$", re.MULTILINE)
+_STRIKE_RE = re.compile(r"~~([^~]+)~~")
+_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
+_BOLD_U_RE = re.compile(r"__([^_]+)__")
+_ITALIC_RE = re.compile(r"\*([^*]+)\*")
+_ITALIC_U_RE = re.compile(r"(^|[\s(])_([^_]+)_(?=[\s).,!?]|$)")
+
+
+def _clean_for_speech(text: str, read_code: bool = False) -> str:
+    """Готовит markdown-ответ ассистента к озвучке (без разметки/кода/ссылок).
+
+    Паритет с cleanForSpeech() в src/lib/text.ts: те же шаги и порядок;
+    кейсы — shared/tts-cases.json (тот же файл читает npm test).
+    """
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+    t = _HTML_COMMENT_RE.sub(" ", t)
+
+    def _fence(m):
+        block = m.group(0)
+        if not read_code:
+            return " " + _CODE_PLACEHOLDER + " "
+        inner = re.sub(r"^```[^\n]*\n?", "", block)
+        inner = re.sub(r"```$", "", inner)
+        return " " + inner + " "
+
+    t = _FENCE_RE.sub(_fence, t)
+    t = _IMAGE_RE.sub(" ", t)
+    t = _LINK_RE.sub(r"\1", t)
+    t = _AUTOLINK_RE.sub(" ", t)
+    t = _URL_RE.sub(" ", t)
+    t = _HEADING_RE.sub("", t)
+    t = _HR_RE.sub(" ", t)
+    t = _QUOTE_RE.sub("", t)
+    t = _LIST_RE.sub("", t)
+    t = _TABLE_SEP_RE.sub("", t)
+    t = t.replace("|", " ")
+    t = _STRIKE_RE.sub(r"\1", t)
+    t = _BOLD_RE.sub(r"\1", t)
+    t = _BOLD_U_RE.sub(r"\1", t)
+    t = _ITALIC_RE.sub(r"\1", t)
+    t = _ITALIC_U_RE.sub(r"\1\2", t)
+    t = t.replace("`", "")
+    t = re.sub(r"\s+", " ", t)
     return t.strip()
 
 

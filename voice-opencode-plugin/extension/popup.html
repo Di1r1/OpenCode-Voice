@@ -32,11 +32,43 @@
     </select>
   </label>
   <label class="toggle"><input type="checkbox" id="sendHotkey"> Alt+X — запись и сразу отправка</label>
+  <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0">
+  <label class="toggle"><input type="checkbox" id="tts"> 🔊 Озвучивать ответы ассистента</label>
+  <label class="toggle" style="display:block">Режим озвучки
+    <select id="ttsMode"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="brief">Кратко (первые предложения)</option>
+      <option value="full">Полностью</option>
+    </select>
+  </label>
+  <label class="toggle" style="display:block">Язык озвучки
+    <select id="ttsLang"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="auto">Авто (по тексту)</option>
+      <option value="ru-RU">Русский</option>
+      <option value="en-US">English</option>
+      <option value="zh-CN">中文</option>
+    </select>
+  </label>
+  <label class="toggle" style="display:block">Голос
+    <select id="ttsVoice"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="">Авто (по языку)</option>
+    </select>
+  </label>
+  <label class="toggle"><input type="checkbox" id="ttsLocalOnly"> Только локальные голоса</label>
+  <label class="toggle"><input type="checkbox" id="ttsDebug"> Лог в консоль (отладка)</label>
+  <label class="toggle" style="display:block">Скорость: <span id="ttsRateVal">1.0</span>
+    <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" style="width:100%">
+  </label>
+  <div id="ttsStatus"
+    style="font-size:11px;color:#6b7280;white-space:pre-wrap;margin-top:6px;line-height:1.35"></div>
   <label class="toggle" style="display:block">Токен доступа
     <input type="password" id="token" placeholder="OPENCODE_VOICE_TOKEN (необязательно)"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
   </label>
   <button id="beepTestBtn" class="btn secondary">🔔 Проверить звук</button>
+  <button id="ttsTestBtn" class="btn secondary">🔊 Тест озвучки</button>
   <button id="testBtn" class="btn primary" disabled>Тест STT сервера</button>
   <button id="healBtn" class="btn secondary">🔧 Восстановить сервер</button>
   <button id="openBtn" class="btn secondary">Открыть настройки</button>

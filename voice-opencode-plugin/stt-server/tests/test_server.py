@@ -378,12 +378,21 @@ def test_strip_non_speech_matches_shared_cases():
         assert srv._strip_non_speech(case["in"]) == case["out"], case["label"]
 
 
+def test_clean_for_speech_matches_shared_cases():
+    cases = _shared("tts-cases.json")
+    assert cases, "shared/tts-cases.json is empty"
+    for case in cases:
+        out = srv._clean_for_speech(case["in"], read_code=bool(case.get("readCode")))
+        assert out == case["out"], case["label"]
+
+
 def test_shared_spec_is_loaded_by_server():
     spec = _shared("stt-spec.json")
     assert srv.SPEC["nonSpeechKeywords"] == spec["nonSpeechKeywords"]
     assert srv.SPEC["nonSpeechSymbols"] == spec["nonSpeechSymbols"]
     assert srv.SPEC["whisperCppExtraFlags"] == spec["whisperCppExtraFlags"]
     assert srv.SPEC["defaultModelByDevice"] == spec["defaultModelByDevice"]
+    assert srv.SPEC["tts"] == spec["tts"]
     assert srv.SILENCE_PEAK == spec["silence"]["peak"]
     assert srv.SILENCE_RMS == spec["silence"]["rms"]
 

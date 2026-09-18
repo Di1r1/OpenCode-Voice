@@ -11,5 +11,16 @@
   "nonSpeechSymbols": "♪♫♬♩♭♮#",
   "silence": { "peak": 700, "rms": 80 },
   "whisperCppExtraFlags": ["-mc", "0", "-sns"],
-  "defaultModelByDevice": { "gpu": "medium", "cpu": "small" }
+  "defaultModelByDevice": { "gpu": "medium", "cpu": "small" },
+  "tts": {
+    "engine": "piper",
+    "voice": "ru_RU-irina-medium",
+    "rate": 1.0,
+    "maxChars": 300,
+    "briefSentences": 2,
+    "mode": "brief",
+    "lang": "auto",
+    "localOnly": true,
+    "maxSeconds": 60
+  }
 }

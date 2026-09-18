@@ -61,3 +61,62 @@ export function stripNonSpeech(text: string): string {
   t = t.replace(/\s{2,}/g, " ").replace(/\s+([,.!?;:])/g, "$1").trim()
   return t
 }
+
+// --- TTS: чистка markdown перед озвучкой (паритет с _clean_for_speech в stt_server.py) ---
+
+export interface CleanForSpeechOptions {
+  /** Читать код как есть вместо «…код…» (по умолчанию код не читается). */
+  readCode?: boolean
+}
+
+const CODE_PLACEHOLDER = "…код…"
+const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g
+const FENCE_RE = /```[\s\S]*?```/g
+const IMAGE_RE = /!\[([^\]]*)\]\([^)]*\)/g
+const LINK_RE = /\[([^\]]+)\]\([^)]*\)/g
+const AUTOLINK_RE = /<(https?:\/\/[^>\s]+)>/g
+const URL_RE = /https?:\/\/[^\s)]+/g
+const HEADING_RE = /^\s{0,3}#{1,6}\s+/gm
+const HR_RE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/gm
+const QUOTE_RE = /^\s{0,3}>\s?/gm
+const LIST_RE = /^\s{0,3}(?:[-*+]|\d+[.)])\s+/gm
+const TABLE_SEP_RE = /^\s*\|?[:\s|-]+\|?\s*$/gm
+const STRIKE_RE = /~~([^~]+)~~/g
+const BOLD_RE = /\*\*([^*]+)\*\*/g
+const BOLD_U_RE = /__([^_]+)__/g
+const ITALIC_RE = /\*([^*]+)\*/g
+const ITALIC_U_RE = /(^|[\s(])_([^_]+)_(?=[\s).,!?]|$)/g
+
+/**
+ * Готовит markdown-ответ ассистента к озвучке: убирает разметку, код-блоки,
+ * ссылки и таблицы, оставляя связный текст для синтеза речи.
+ *
+ * Паритетные кейсы — shared/tts-cases.json (тот же файл читает pytest).
+ */
+export function cleanForSpeech(text: string, opts: CleanForSpeechOptions = {}): string {
+  const readCode = opts.readCode === true
+  let t = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  t = t.replace(HTML_COMMENT_RE, " ")
+  t = t.replace(FENCE_RE, (block) => {
+    if (!readCode) return ` ${CODE_PLACEHOLDER} `
+    return " " + block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "") + " "
+  })
+  t = t.replace(IMAGE_RE, " ")
+  t = t.replace(LINK_RE, "$1")
+  t = t.replace(AUTOLINK_RE, " ")
+  t = t.replace(URL_RE, " ")
+  t = t.replace(HEADING_RE, "")
+  t = t.replace(HR_RE, " ")
+  t = t.replace(QUOTE_RE, "")
+  t = t.replace(LIST_RE, "")
+  t = t.replace(TABLE_SEP_RE, "")
+  t = t.replace(/\|/g, " ")
+  t = t.replace(STRIKE_RE, "$1")
+  t = t.replace(BOLD_RE, "$1")
+  t = t.replace(BOLD_U_RE, "$1")
+  t = t.replace(ITALIC_RE, "$1")
+  t = t.replace(ITALIC_U_RE, "$1$2")
+  t = t.replace(/`/g, "")
+  t = t.replace(/\s+/g, " ").trim()
+  return t
+}

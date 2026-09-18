@@ -56,6 +56,104 @@ sendHotkeyEl.addEventListener('change', () => {
   chrome.storage.local.set({ sendHotkey: sendHotkeyEl.checked });
 });
 
+// Озвучка ответов ассистента (ключи читают content.js/tts.js).
+const ttsEl = document.getElementById('tts');
+const ttsModeEl = document.getElementById('ttsMode');
+const ttsLangEl = document.getElementById('ttsLang');
+const ttsLocalOnlyEl = document.getElementById('ttsLocalOnly');
+const ttsRateEl = document.getElementById('ttsRate');
+const ttsRateVal = document.getElementById('ttsRateVal');
+const ttsDebugEl = document.getElementById('ttsDebug');
+const ttsVoiceEl = document.getElementById('ttsVoice');
+
+// Список голосов системы (грузится асинхронно — voiceschanged).
+function fillVoices(selected) {
+  const cur = selected !== undefined ? selected : ttsVoiceEl.value;
+  const voices = (typeof speechSynthesis !== 'undefined' && speechSynthesis.getVoices()) || [];
+  ttsVoiceEl.innerHTML = '';
+  const auto = document.createElement('option');
+  auto.value = '';
+  auto.textContent = 'Авто (по языку)';
+  ttsVoiceEl.appendChild(auto);
+  for (const v of voices) {
+    const o = document.createElement('option');
+    o.value = v.name;
+    o.textContent = `${v.name} — ${v.lang}${v.localService === false ? ' (сеть)' : ''}${v.default ? ' ★' : ''}`;
+    ttsVoiceEl.appendChild(o);
+  }
+  ttsVoiceEl.value = cur || '';
+}
+if (typeof speechSynthesis !== 'undefined') {
+  speechSynthesis.addEventListener('voiceschanged', () => fillVoices());
+}
+
+chrome.storage.local.get(
+  { tts: false, ttsMode: 'brief', ttsLang: 'auto', ttsVoice: '', ttsLocalOnly: true, ttsRate: 1.0, ttsDebug: false },
+  (v) => {
+    ttsEl.checked = v.tts === true;
+    ttsModeEl.value = v.ttsMode || 'brief';
+    ttsLangEl.value = v.ttsLang || 'auto';
+    ttsLocalOnlyEl.checked = v.ttsLocalOnly !== false;
+    ttsRateEl.value = String(v.ttsRate || 1.0);
+    ttsRateVal.textContent = Number(ttsRateEl.value).toFixed(1);
+    ttsDebugEl.checked = v.ttsDebug === true;
+    ttsVoiceEl.value = v.ttsVoice || '';
+    fillVoices(v.ttsVoice || '');
+  }
+);
+ttsEl.addEventListener('change', () => chrome.storage.local.set({ tts: ttsEl.checked }));
+ttsModeEl.addEventListener('change', () => chrome.storage.local.set({ ttsMode: ttsModeEl.value }));
+ttsLangEl.addEventListener('change', () => chrome.storage.local.set({ ttsLang: ttsLangEl.value }));
+ttsLocalOnlyEl.addEventListener('change', () => chrome.storage.local.set({ ttsLocalOnly: ttsLocalOnlyEl.checked }));
+ttsRateEl.addEventListener('input', () => {
+  ttsRateVal.textContent = Number(ttsRateEl.value).toFixed(1);
+  chrome.storage.local.set({ ttsRate: Number(ttsRateEl.value) });
+});
+ttsDebugEl.addEventListener('change', () => chrome.storage.local.set({ ttsDebug: ttsDebugEl.checked }));
+ttsVoiceEl.addEventListener('change', () => chrome.storage.local.set({ ttsVoice: ttsVoiceEl.value }));
+
+// Тест озвучки: просим content-скрипт активной вкладки произнести фразу —
+// так отделяем проблему синтеза от проблемы событий/DOM.
+const ttsTestBtn = document.getElementById('ttsTestBtn');
+ttsTestBtn.addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) throw new Error('нет активной вкладки');
+    const res = await chrome.tabs.sendMessage(tab.id, { type: 'ocv-tts-test' });
+    if (res && res.ok) {
+      statusEl.textContent = '🔊 Тест отправлен — должна звучать фраза';
+      statusEl.className = 'status ok';
+    } else {
+      statusEl.textContent = '⚠️ Content-скрипт не ответил';
+      statusEl.className = 'status error';
+    }
+    setTimeout(refreshTtsStatus, 300);
+  } catch (err) {
+    statusEl.textContent = '⚠️ Откройте страницу OpenCode и обновите её (F5)';
+    statusEl.className = 'status error';
+  }
+});
+
+// Статус TTS с активной вкладки — быстрый способ диагностики без DevTools.
+async function refreshTtsStatus() {
+  const el = document.getElementById('ttsStatus');
+  if (!el) return;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) { el.textContent = 'нет активной вкладки'; return; }
+    const s = await chrome.tabs.sendMessage(tab.id, { type: 'ocv-tts-status' });
+    if (!s || !s.ok) { el.textContent = 'content-скрипт не отвечает (обновите страницу F5)'; return; }
+    el.textContent =
+      `gate:${s.gateOk} sse:${s.sourceState} events:${s.events} fin:${s.finalized} rows:${s.rows} voices:${s.voices}\n` +
+      `last:${s.lastType || '-'} sid:${(s.lastSid || '').slice(-8)}\n` +
+      (s.lastSkip ? `skip:${s.lastSkip}\n` : '') +
+      ((s.logTail && s.logTail.length) ? s.logTail.slice(-5).join('\n') : '');
+  } catch (e) {
+    el.textContent = 'статус недоступен (обновите страницу F5)';
+  }
+}
+refreshTtsStatus();
+
 beepTestBtn.addEventListener('click', async () => {
   try {
     await fetch(`${STT_SERVER}/beep?freq=880`, { headers: authHeaders() });
