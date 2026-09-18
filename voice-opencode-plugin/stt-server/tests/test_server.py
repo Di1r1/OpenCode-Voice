@@ -538,15 +538,18 @@ def test_purge_removes_stale_but_keeps_beeps(tmp_path, monkeypatch):
     stale = tmp_path / "voice-old.wav"
     fresh = tmp_path / "voice-new.wav"
     beep = tmp_path / "beep-880-120.wav"
-    for p in (stale, fresh, beep):
+    tts = tmp_path / "tts-abcdef.wav"
+    for p in (stale, fresh, beep, tts):
         p.write_bytes(b"x")
     old = time.time() - 3600
     os.utime(stale, (old, old))
     os.utime(beep, (old, old))
+    os.utime(tts, (old, old))
     srv._purge_old_files()
     assert not stale.exists()
     assert fresh.exists()
     assert beep.exists()
+    assert tts.exists()  # кэш TTS живёт под LRU, а не таймером purge
 
 
 # ---------------------------------------------------------------------------
@@ -607,3 +610,152 @@ def test_respawn_does_not_inherit_listening_socket(monkeypatch):
     assert captured["kwargs"]["start_new_session"] is True
     assert "9123" in captured["args"]
     assert captured["kwargs"]["stdout"] is srv.sys.stdout
+
+
+# ---------------------------------------------------------------------------
+# /speak — server-side TTS (fake piper; real engine is installed by setup --tts)
+# ---------------------------------------------------------------------------
+
+def _fake_piper(tmp_path):
+    """Stub piper: <bin> <out.wav>, reads text on stdin, writes a tiny WAV."""
+    script = tmp_path / "fake-piper"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys, wave\n"
+        "out = sys.argv[1]\n"
+        "data = sys.stdin.buffer.read()\n"
+        "open(out + '.in', 'wb').write(data)\n"
+        "with wave.open(out, 'wb') as w:\n"
+        "    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)\n"
+        "    w.writeframes(b'\\x00\\x00' * 160)\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+@pytest.fixture(autouse=True)
+def _reset_tts(monkeypatch):
+    monkeypatch.setattr(srv, "TTS_ENABLED", False)
+    monkeypatch.setattr(srv, "TTS_ENGINE", "piper")
+    monkeypatch.setattr(srv, "TTS_VOICE", "test-voice")
+    monkeypatch.setattr(srv, "TTS_MAX_CHARS", 300)
+    monkeypatch.setattr(srv, "TTS_CACHE_MAX_MB", 64)
+    monkeypatch.delenv("OPENCODE_VOICE_TTS_BIN", raising=False)
+    monkeypatch.delenv("OPENCODE_VOICE_TTS_VOICES_DIR", raising=False)
+    srv._tts_sem = srv.threading.Semaphore(1)
+    with srv._tts_cache_lock:
+        srv._tts_cache.clear()
+        srv._tts_cache_bytes = 0
+    yield
+
+
+def _enable_tts(monkeypatch, tmp_path):
+    fake = _fake_piper(tmp_path)
+    monkeypatch.setattr(srv, "TTS_ENABLED", True)
+    monkeypatch.setattr(srv, "TMP_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_BIN", str(fake))
+    return fake
+
+
+def test_speak_disabled_is_501(client):
+    assert client.post("/speak", json={"text": "привет"}).status_code == 501
+
+
+def test_speak_unavailable_is_501(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "TTS_ENABLED", True)
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_BIN", str(tmp_path / "missing-piper"))
+    assert client.post("/speak", json={"text": "привет"}).status_code == 501
+
+
+def test_speak_returns_wav(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    r = client.post("/speak", json={"text": "**Привет**, мир!"})
+    assert r.status_code == 200
+    assert r.mimetype == "audio/wav"
+    assert r.data[:4] == b"RIFF"
+    assert len(r.data) > 44
+
+
+def test_speak_requires_text(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    assert client.post("/speak", json={}).status_code == 400
+    assert client.post("/speak", json={"text": "   "}).status_code == 400
+    assert client.post("/speak", json={"text": "https://example.com"}).status_code == 400
+
+
+def test_speak_token_required(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    monkeypatch.setenv("OPENCODE_VOICE_TOKEN", "s3cret")
+    assert client.post("/speak", json={"text": "привет"}).status_code == 401
+    ok = client.post("/speak", json={"text": "привет"}, headers={"X-Voice-Token": "s3cret"})
+    assert ok.status_code == 200
+
+
+def test_speak_too_long_is_413(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    monkeypatch.setattr(srv, "TTS_MAX_CHARS", 10)
+    assert client.post("/speak", json={"text": "слово " * 50}).status_code == 413
+
+
+def test_speak_busy_is_429(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    assert srv._tts_sem.acquire(blocking=False)
+    try:
+        r = client.post("/speak", json={"text": "привет"})
+        assert r.status_code == 429
+        assert "busy" in r.get_json()["error"]
+    finally:
+        srv._tts_sem.release()
+
+
+def test_speak_cache_hit(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    calls = {"n": 0}
+
+    def fake_synth(text, voice, rate, out):
+        calls["n"] += 1
+        with wave.open(out, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x00" * 160)
+        return True, None
+
+    monkeypatch.setattr(srv, "_tts_synthesize", fake_synth)
+    assert client.post("/speak", json={"text": "одинаковый"}).status_code == 200
+    assert client.post("/speak", json={"text": "одинаковый"}).status_code == 200
+    assert calls["n"] == 1
+
+
+def test_speak_unknown_voice_is_400(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    voices = tmp_path / "voices"
+    voices.mkdir()
+    (voices / "ru_RU-test-medium.onnx").write_bytes(b"x")
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_VOICES_DIR", str(voices))
+    assert client.post("/speak", json={"text": "привет", "voice": "evil"}).status_code == 400
+    ok = client.post("/speak", json={"text": "привет", "voice": "ru_RU-test-medium"})
+    assert ok.status_code == 200
+
+
+def test_speak_no_shell_injection(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    sentinel = tmp_path / "pwned"
+    r = client.post("/speak", json={"text": f"привет; $(touch {sentinel})"})
+    assert r.status_code == 200
+    assert not sentinel.exists()
+
+
+def test_brief_sentences_include_errors():
+    assert srv._brief_sentences("Всё хорошо. Произошла ошибка X. Дальше.", 1) == \
+        "Всё хорошо. Произошла ошибка X."
+    assert srv._brief_sentences("A. B. C.", 2) == "A. B."
+
+
+def test_health_reports_tts(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    body = client.get("/health").get_json()
+    assert body["tts"]["enabled"] is True
+    assert body["tts"]["engine"] == "piper"
+    assert body["tts"]["available"] is True

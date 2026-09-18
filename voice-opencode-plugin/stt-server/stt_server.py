@@ -13,6 +13,7 @@ Run:
 """
 
 import array
+import hashlib
 import json
 import os
 import platform
@@ -26,8 +27,9 @@ import threading
 import time
 import wave
 import logging
+from collections import OrderedDict
 from pathlib import Path
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 
 # --- Единый источник истины с TypeScript: voice-opencode-plugin/shared/stt-spec.json ---
 _SPEC_PATH = Path(__file__).resolve().parents[1] / "shared" / "stt-spec.json"
@@ -159,6 +161,203 @@ except ValueError:
 _transcribe_sem = threading.Semaphore(MAX_CONCURRENT)
 _rate_lock = threading.Lock()
 _rate_buckets: dict = {}
+
+# ---------------------------------------------------------------------------
+# TTS: серверный синтез (аддитивно; по умолчанию выключен). Движок по умолчанию —
+# Piper (офлайн). Звук в web-UI проигрывает браузер: POST /speak -> audio/wav;
+# серверный _play_file нужен только TUI (этап F) и как фолбэк.
+# ---------------------------------------------------------------------------
+_TTS_SPEC = SPEC.get("tts", {}) or {}
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+TTS_ENABLED = _env_flag("OPENCODE_VOICE_TTS", False)
+TTS_ENGINE = os.getenv("OPENCODE_VOICE_TTS_ENGINE", str(_TTS_SPEC.get("engine", "piper"))).strip().lower()
+TTS_VOICE = os.getenv("OPENCODE_VOICE_TTS_VOICE", str(_TTS_SPEC.get("voice", ""))).strip()
+TTS_RATE = _env_float("OPENCODE_VOICE_TTS_RATE", float(_TTS_SPEC.get("rate", 1.0)))
+TTS_MAX_CHARS = _env_int("OPENCODE_VOICE_TTS_MAX_CHARS", int(_TTS_SPEC.get("maxChars", 300)))
+TTS_BRIEF_SENTENCES = _env_int(
+    "OPENCODE_VOICE_TTS_BRIEF_SENTENCES", int(_TTS_SPEC.get("briefSentences", 2))
+)
+TTS_MODE = os.getenv("OPENCODE_VOICE_TTS_MODE", str(_TTS_SPEC.get("mode", "brief"))).strip().lower()
+TTS_LANG = os.getenv("OPENCODE_VOICE_TTS_LANG", str(_TTS_SPEC.get("lang", "auto"))).strip()
+TTS_CACHE_MAX_MB = _env_int("OPENCODE_VOICE_TTS_CACHE_MB", 64)
+TTS_TIMEOUT = _env_float("OPENCODE_VOICE_TTS_TIMEOUT", 60.0)
+
+_tts_sem = threading.Semaphore(max(1, _env_int("OPENCODE_VOICE_TTS_MAX_CONCURRENT", 1)))
+_tts_cache: "OrderedDict[str, tuple]" = OrderedDict()  # key -> (path, size)
+_tts_cache_bytes = 0
+_tts_cache_lock = threading.Lock()
+
+_TTS_ERROR_RE = re.compile(
+    r"ошибк|error|fail|failed|не удалось|предупрежд|warn|exception|traceback|panic|fatal",
+    re.IGNORECASE,
+)
+
+
+def _tts_home() -> str:
+    return os.path.join(_whisper_home(), "tts")
+
+
+def _tts_piper_bin() -> str:
+    # OPENCODE_VOICE_TTS_BIN — явный бинарь (используется и тестами как fake-piper).
+    return (
+        os.getenv("OPENCODE_VOICE_TTS_BIN")
+        or os.getenv("OPENCODE_VOICE_TTS_PIPER_BIN")
+        or shutil.which("piper")
+        or os.path.join(_tts_home(), "piper", "piper")
+    )
+
+
+def _tts_voices_dir() -> str:
+    return os.getenv("OPENCODE_VOICE_TTS_VOICES_DIR", os.path.join(_tts_home(), "voices"))
+
+
+def _tts_allowed_voices() -> list:
+    """Whitelist голосов: имена *.onnx в каталоге (никаких путей из запроса)."""
+    try:
+        return sorted(p[:-5] for p in os.listdir(_tts_voices_dir()) if p.endswith(".onnx"))
+    except Exception:
+        return []
+
+
+def _tts_voice_file(voice: str) -> str:
+    return os.path.join(_tts_voices_dir(), voice + ".onnx")
+
+
+def _tts_available() -> bool:
+    if not TTS_ENABLED or TTS_ENGINE != "piper":
+        return False
+    binp = _tts_piper_bin()
+    if os.getenv("OPENCODE_VOICE_TTS_BIN"):
+        return os.path.exists(binp)  # fake/тестовый бинарь — без каталога голосов
+    if not (os.path.exists(binp) or shutil.which(binp)):
+        return False
+    if TTS_VOICE and os.path.exists(_tts_voice_file(TTS_VOICE)):
+        return True
+    return bool(_tts_allowed_voices())
+
+
+def _tts_status() -> dict:
+    return {
+        "enabled": TTS_ENABLED,
+        "engine": TTS_ENGINE,
+        "voice": TTS_VOICE,
+        "available": _tts_available(),
+        "cache_mb": TTS_CACHE_MAX_MB,
+        "max_chars": TTS_MAX_CHARS,
+    }
+
+
+def _log_tts(event: str, extra: str = ""):
+    try:
+        with open("/tmp/opencode/voice-tts.log", "a") as f:
+            f.write(
+                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {event} {extra}\n"
+            )
+    except Exception:
+        pass
+
+
+def _brief_sentences(text: str, n: int, include_errors: bool = True) -> str:
+    """«Кратко»: первые N предложений + предложения с ошибками (решение §10.3)."""
+    sentences = [s.strip() for s in re.findall(r"[^.!?…]+[.!?…]*", text) if s.strip()]
+    if not sentences:
+        return ""
+    take = sentences[: max(1, n)]
+    if include_errors:
+        for s in sentences:
+            if _TTS_ERROR_RE.search(s) and s not in take:
+                take.append(s)
+    return " ".join(take)
+
+
+def _tts_cache_key(text: str, voice: str, rate: float, mode: str) -> str:
+    raw = f"{voice}|{rate:.3f}|{mode}|{text}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def _tts_cache_get(key: str):
+    global _tts_cache_bytes
+    with _tts_cache_lock:
+        item = _tts_cache.get(key)
+        if not item:
+            return None
+        path, size = item
+        if not os.path.exists(path):
+            _tts_cache.pop(key, None)
+            _tts_cache_bytes -= size
+            return None
+        _tts_cache.move_to_end(key)
+        return path
+
+
+def _tts_cache_put(key: str, path: str):
+    global _tts_cache_bytes
+    try:
+        size = os.path.getsize(path)
+    except Exception:
+        return
+    limit = max(0, TTS_CACHE_MAX_MB) * 1024 * 1024
+    with _tts_cache_lock:
+        old = _tts_cache.pop(key, None)
+        if old:
+            _tts_cache_bytes -= old[1]
+        _tts_cache[key] = (path, size)
+        _tts_cache_bytes += size
+        while _tts_cache_bytes > limit and _tts_cache:
+            _, (evicted, esize) = _tts_cache.popitem(last=False)
+            _tts_cache_bytes -= esize
+            try:
+                if os.path.exists(evicted):
+                    os.unlink(evicted)
+            except Exception:
+                pass
+
+
+def _tts_synthesize(text: str, voice: str, rate: float, out_path: str):
+    """Синтез WAV. Текст передаётся на stdin (без shell). (ok, error)."""
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    except Exception:
+        pass
+    override = os.getenv("OPENCODE_VOICE_TTS_BIN", "")
+    if override:
+        cmd = [override, out_path]  # контракт fake-piper: <bin> <out.wav>, текст на stdin
+    else:
+        cmd = [_tts_piper_bin(), "--model", _tts_voice_file(voice), "--output_file", out_path]
+        if abs(rate - 1.0) > 1e-6:
+            cmd += ["--length_scale", f"{1.0 / rate:.3f}"]
+    try:
+        proc = subprocess.run(
+            cmd, input=text.encode("utf-8"), capture_output=True, timeout=TTS_TIMEOUT, check=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        return False, f"synthesis failed: {e}"
+    if proc.returncode != 0 or not os.path.exists(out_path):
+        err = (proc.stderr or b"").decode("utf-8", "replace").strip()[:200]
+        return False, (err or f"synthesis failed (exit {proc.returncode})")
+    return True, None
 
 
 def _rate_limited(kind: str) -> bool:
@@ -473,7 +672,8 @@ def _purge_old_files():
         now = time.time()
         for name in os.listdir(TMP_DIR):
             p = os.path.join(TMP_DIR, name)
-            if name.startswith("beep-"):
+            # beep-/tts- файлы живут под своими таймерами/кэшем
+            if name.startswith("beep-") or name.startswith("tts-"):
                 continue
             try:
                 if os.path.isfile(p) and (now - os.path.getmtime(p)) > RETAIN_SECONDS:
@@ -512,22 +712,26 @@ def _beep_wav(freq: int, ms: int = 120, rate: int = 44100) -> str:
     return path
 
 
+def _play_file(path: str):
+    """Проиграть WAV через PulseAudio (WSL) — best-effort. Нужен TUI/фолбэку."""
+    if not path or not os.path.exists(path):
+        return
+    for cmd in (["aplay", "-D", "pulse", "-q", path],
+                ["paplay", path],
+                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path]):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, timeout=5, check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except Exception:
+                pass
+
+
 def _play_beep(freq: int = 880, ms: int = 120):
     """Проиграть сигнал через PulseAudio (WSL) — best-effort."""
     try:
-        path = _beep_wav(freq, ms)
-        if not os.path.exists(path):
-            return
-        for cmd in (["aplay", "-D", "pulse", "-q", path],
-                    ["paplay", path],
-                    ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", path]):
-            if shutil.which(cmd[0]):
-                try:
-                    subprocess.run(cmd, timeout=5, check=False,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    return
-                except Exception:
-                    pass
+        _play_file(_beep_wav(freq, ms))
     except Exception:
         pass
 
@@ -1293,6 +1497,7 @@ def health():
         "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
         "max_audio_seconds": MAX_AUDIO_SECONDS,
         "rate_limit_per_min": RATE_LIMIT_PER_MIN,
+        "tts": _tts_status(),
     })
 
 
@@ -1320,6 +1525,65 @@ def beep_route():
     if freq > 0:
         threading.Thread(target=_play_beep, args=(freq,), daemon=True).start()
     return jsonify({"status": "ok", "freq": freq})
+
+
+@app.route("/speak", methods=["POST"])
+def speak_route():
+    """Синтез речи: JSON {text, voice?, rate?, mode?} -> audio/wav (играет браузер)."""
+    _log_request("speak")
+    if not TTS_ENABLED:
+        return jsonify({"status": "error", "error": "tts disabled (set OPENCODE_VOICE_TTS=1)"}), 501
+    if not _tts_available():
+        return jsonify({"status": "error", "error": f"tts engine unavailable ({TTS_ENGINE})"}), 501
+    if _rate_limited("speak"):
+        return _too_many()
+
+    payload = request.get_json(silent=True) or {}
+    raw = payload.get("text")
+    if not isinstance(raw, str) or not raw.strip():
+        return jsonify({"status": "error", "error": "no text provided"}), 400
+
+    mode = str(payload.get("mode") or TTS_MODE).strip().lower()
+    voice = str(payload.get("voice") or TTS_VOICE).strip()
+    try:
+        rate = float(payload.get("rate", TTS_RATE))
+    except (TypeError, ValueError):
+        rate = TTS_RATE
+    if not voice:
+        return jsonify({"status": "error", "error": "no voice configured"}), 400
+    allowed = _tts_allowed_voices()
+    if allowed and voice not in allowed:
+        return jsonify({"status": "error", "error": "unknown voice (not in catalog)"}), 400
+
+    text = _clean_for_speech(raw)
+    if mode == "brief":
+        text = _brief_sentences(text, TTS_BRIEF_SENTENCES)
+    if len(text) > TTS_MAX_CHARS:
+        return jsonify({"status": "error",
+                        "error": f"text too long ({len(text)} > {TTS_MAX_CHARS})"}), 413
+    if not text:
+        return jsonify({"status": "error", "error": "empty text after cleanup"}), 400
+
+    key = _tts_cache_key(text, voice, rate, mode)
+    cached = _tts_cache_get(key)
+    if cached:
+        _log_tts("speak", f"cache=hit voice={voice} chars={len(text)}")
+        return send_file(cached, mimetype="audio/wav")
+
+    if not _tts_sem.acquire(blocking=False):
+        return jsonify({"status": "error",
+                        "error": "server busy: another synthesis is running"}), 429
+    try:
+        out = os.path.join(TMP_DIR, f"tts-{key}.wav")
+        ok, err = _tts_synthesize(text, voice, rate, out)
+        if not ok:
+            _log_tts("speak", f"error={err!r} voice={voice}")
+            return jsonify({"status": "error", "error": err}), 500
+        _tts_cache_put(key, out)
+        _log_tts("speak", f"cache=miss voice={voice} chars={len(text)} rate={rate:.2f}")
+        return send_file(out, mimetype="audio/wav")
+    finally:
+        _tts_sem.release()
 
 
 @app.route("/transcribe", methods=["POST"])
@@ -1456,6 +1720,11 @@ if __name__ == "__main__":
         logger.info(f"STT backend: faster-whisper ({args.device}/{args.compute_type})")
 
     _runtime_checks()
+    if TTS_ENABLED:
+        logger.info(
+            "TTS: engine=%s voice=%s available=%s max_chars=%d cache=%dMB",
+            TTS_ENGINE, TTS_VOICE or "(unset)", _tts_available(), TTS_MAX_CHARS, TTS_CACHE_MAX_MB,
+        )
 
     logger.info(f"Starting server on {args.host}:{args.port}")
     logger.info(f"PULSE_SERVER={os.getenv('PULSE_SERVER', '(not set)')}")
