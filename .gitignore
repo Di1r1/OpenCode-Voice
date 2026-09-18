@@ -20,6 +20,8 @@ voice-opencode-plugin/extension/README.md
 voice-opencode-plugin/extension/icon.svg
 voice-opencode-plugin/AGENTS.md
 voice-opencode-plugin/SKILLS_GUIDE.md
+# Local voice samples used for audio analysis (kept locally, not published)
+voice-opencode-plugin/test/fixtures/
 # Project-local wiring samples (users configure the global ~/.config/opencode/*)
 voice-opencode-plugin/opencode.json
 voice-opencode-plugin/tui.json
