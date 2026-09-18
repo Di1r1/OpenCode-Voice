@@ -42,7 +42,6 @@ TTS_DIR="${OPENCODE_VOICE_TTS_HOME:-$HOME_DIR/tts}"
 TTS_PIPER_DIR="$TTS_DIR/piper"
 TTS_VOICES_DIR="${OPENCODE_VOICE_TTS_VOICES_DIR:-$TTS_DIR/voices}"
 TTS_VOICE="${OPENCODE_VOICE_TTS_VOICE:-ru_RU-irina-medium}"
-TTS_VOICE_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium"
 OPENCODE_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 
 C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_OFF=$'\033[0m'
@@ -146,7 +145,7 @@ if [ "$CHECK_ONLY" = "1" ]; then
   n=0
   if [ "$DO_PIP" = "1" ]; then n=$((n+1)); echo "  $n. python3 -m pip install -r voice-opencode-plugin/stt-server/requirements.txt (faster-whisper)"; fi
   if [ "$MODE_GPU" = "1" ]; then n=$((n+1)); echo "  $n. собрать whisper.cpp с CUDA и скачать ggml-$MODEL_SIZE.bin в $WHISPER_DIR"; fi
-  if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. скачать Piper и голос $TTS_VOICE в $TTS_DIR"; fi
+  if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. скачать Piper и русские голоса (${OPENCODE_VOICE_TTS_VOICES:-irina dmitri denis ruslan}) в $TTS_DIR"; fi
   if [ "$DO_SYNC" = "1" ]; then n=$((n+1)); echo "  $n. bash voice-opencode-plugin/sync-plugin.sh (сгенерировать entry-файлы)"; fi
   n=$((n+1)); echo "  $n. показать строки для ~/.config/opencode/opencode.json и tui.json"
   n=$((n+1)); echo "  $n. bash voice-opencode-plugin/doctor.sh"
@@ -271,27 +270,32 @@ if [ "$DO_TTS" = "1" ]; then
     fi
   fi
 
-  if [ "$TTS_VOICE" = "ru_RU-irina-medium" ]; then
+  # Русские голоса Piper (medium, ~60 МБ каждый): качаем весь набор, чтобы было
+  # из чего выбирать в popup (каталог GET /voices). Переопределить:
+  # OPENCODE_VOICE_TTS_VOICES="irina dmitri" (имена без префикса/суффикса).
+  TTS_VOICE_NAMES="${OPENCODE_VOICE_TTS_VOICES:-irina dmitri denis ruslan}"
+  TTS_VOICE_URL_REPO="https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU"
+  for _name in $TTS_VOICE_NAMES; do
+    _vname="ru_RU-${_name}-medium"
+    _vbase="$TTS_VOICE_URL_REPO/$_name/medium/$_vname"
     for ext in onnx onnx.json; do
-      VOICE_FILE="$TTS_VOICES_DIR/$TTS_VOICE.$ext"
+      VOICE_FILE="$TTS_VOICES_DIR/$_vname.$ext"
       if [ -s "$VOICE_FILE" ]; then ok "голос уже есть: $VOICE_FILE"; continue; fi
-      info "скачиваю $TTS_VOICE.$ext"
-      if curl -fL --retry 3 -o "$VOICE_FILE.part" "$TTS_VOICE_URL_BASE.$ext"; then
+      info "скачиваю $_vname.$ext"
+      if curl -fL --retry 3 -o "$VOICE_FILE.part" "$_vbase.$ext"; then
         mv -f "$VOICE_FILE.part" "$VOICE_FILE"; ok "$VOICE_FILE"
       else
-        rm -f "$VOICE_FILE.part"; warn "не удалось скачать $TTS_VOICE.$ext"
+        rm -f "$VOICE_FILE.part"; warn "не удалось скачать $_vname.$ext"
       fi
     done
-  else
-    info "голос $TTS_VOICE не скачивается автоматически — положите $TTS_VOICE.onnx(.json) в $TTS_VOICES_DIR"
-  fi
+  done
 
   echo
-  info "серверный TTS выключен по умолчанию — включите переменными:"
-  echo "    OPENCODE_VOICE_TTS=1"
+  info "серверный TTS выключен по умолчанию — включите переменными ТАМ, откуда стартует OpenCode:"
+  echo "    export OPENCODE_VOICE_TTS=1   # сервер читает флаг один раз при старте; heal/вотчдог его не включат"
   echo "    OPENCODE_VOICE_TTS_BIN=$PIPER_BIN"
   echo "    OPENCODE_VOICE_TTS_VOICES_DIR=$TTS_VOICES_DIR"
-  echo "  В popup расширения выберите движок «Сервер»; диагностика — ./doctor.sh"
+  echo "  Затем перезапустите сервер; в popup расширения выберите движок «Сервер»; диагностика — ./doctor.sh"
 fi
 
 # ---------------------------------------------------------------------------

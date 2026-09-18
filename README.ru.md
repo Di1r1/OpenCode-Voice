@@ -231,11 +231,16 @@ OpenCode Voice умеет читать ответы ассистента всл�
 Установка серверного движка (Piper + русский голос) в `$OPENCODE_VOICE_HOME/tts`:
 
 ```bash
-./setup.sh --tts           # скачает piper + ru_RU-irina-medium (~60 МБ)
+./setup.sh --tts           # скачает piper + все 4 русских голоса (~260 МБ)
 export OPENCODE_VOICE_TTS=1
 # OPENCODE_VOICE_TTS_BIN=$HOME/.local/share/opencode-voice/tts/piper/piper
 # OPENCODE_VOICE_TTS_VOICES_DIR=$HOME/.local/share/opencode-voice/tts/voices
 ```
+
+> **Постоянство:** сервер читает `OPENCODE_VOICE_TTS` один раз при старте. Экспортируйте
+> переменную в окружении, из которого стартует сам OpenCode (например `~/.bashrc`),
+> и перезапустите сервер — кнопка «восстановить» в popup и вотчдог перезапускают
+> процесс со старым окружением и включить TTS не могут.
 
 Затем в popup расширения включите **🔊 Озвучивать ответы ассистента** и выберите движок
 (**Браузер**/**Сервер**), режим (**кратко** — первые предложения + строки с ошибками / **полностью**),
@@ -322,7 +327,8 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 |----------|---------|---------|
 | `OPENCODE_VOICE_TTS` | включить `POST /speak` (при `0` отвечает `501`) | `0` |
 | `OPENCODE_VOICE_TTS_ENGINE` | движок синтеза | `piper` |
-| `OPENCODE_VOICE_TTS_VOICE` | голос Piper | `ru_RU-irina-medium` |
+| `OPENCODE_VOICE_TTS_VOICE` | голос Piper (по умолчанию; каталог в popup через `GET /voices`) | `ru_RU-irina-medium` |
+| `OPENCODE_VOICE_TTS_VOICES` | имена голосов через пробел для `./setup.sh --tts` | `irina dmitri denis ruslan` |
 | `OPENCODE_VOICE_TTS_RATE` | скорость речи | `1.0` |
 | `OPENCODE_VOICE_TTS_MAX_CHARS` | обрезка длинного текста (выше — `413`) | `300` |
 | `OPENCODE_VOICE_TTS_BRIEF_SENTENCES` | режим `кратко`: первые предложения (ошибки всегда включаются) | `2` |

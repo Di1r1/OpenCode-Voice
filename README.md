@@ -230,11 +230,16 @@ Two engines:
 Install the server engine (Piper + a Russian voice) into `$OPENCODE_VOICE_HOME/tts`:
 
 ```bash
-./setup.sh --tts           # downloads piper + ru_RU-irina-medium (~60 MB)
+./setup.sh --tts           # downloads piper + all 4 RU voices (~260 MB)
 export OPENCODE_VOICE_TTS=1
 # OPENCODE_VOICE_TTS_BIN=$HOME/.local/share/opencode-voice/tts/piper/piper
 # OPENCODE_VOICE_TTS_VOICES_DIR=$HOME/.local/share/opencode-voice/tts/voices
 ```
+
+> **Persistence:** the server reads `OPENCODE_VOICE_TTS` once at startup. Export it in the
+> environment OpenCode itself starts from (e.g. `~/.bashrc`) and restart the server —
+> neither the popup "heal" button nor the watchdog can enable it on a running process
+> (they respawn with the old environment).
 
 Then open the extension popup, turn on **🔊 Voice assistant answers** and pick the engine
 (**Browser**/**Server**), mode (**brief** — first sentences plus any error lines / **full**),
@@ -321,7 +326,8 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 |----------|---------|---------|
 | `OPENCODE_VOICE_TTS` | enable `POST /speak` (when `0`, it answers `501`) | `0` |
 | `OPENCODE_VOICE_TTS_ENGINE` | synthesis engine | `piper` |
-| `OPENCODE_VOICE_TTS_VOICE` | Piper voice | `ru_RU-irina-medium` |
+| `OPENCODE_VOICE_TTS_VOICE` | Piper voice (default; catalog in popup via `GET /voices`) | `ru_RU-irina-medium` |
+| `OPENCODE_VOICE_TTS_VOICES` | space-separated voice names for `./setup.sh --tts` | `irina dmitri denis ruslan` |
 | `OPENCODE_VOICE_TTS_RATE` | speech speed | `1.0` |
 | `OPENCODE_VOICE_TTS_MAX_CHARS` | trim long text (`413` above it) | `300` |
 | `OPENCODE_VOICE_TTS_BRIEF_SENTENCES` | `brief` mode: first sentences (errors always included) | `2` |
