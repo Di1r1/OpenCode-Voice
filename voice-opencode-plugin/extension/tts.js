@@ -161,6 +161,7 @@
     ttsLang: "auto",
     ttsEngine: "browser",
     ttsVoice: "",
+    ttsServerVoice: "",
     ttsRate: 1.0,
     ttsLocalOnly: true,
     ttsMaxSeconds: 60,
@@ -541,7 +542,7 @@
       if (!hasUserActivation()) { dbg("no user activation, defer (server)"); pending = text; return; }
       speaking = true;
       toast("🔊 Говорю… (сервер)", "info", 2000);
-      dbg("speak server", { chars: text.length, voice: settings.ttsVoice || null });
+      dbg("speak server", { chars: text.length, voice: settings.ttsServerVoice || settings.ttsVoice || null });
       var secs = Number(settings.ttsMaxSeconds) || 0;
       if (secs > 0) maxTimer = setTimeout(function () { stopSpeaking(true); }, secs * 1000);
       var fallback = function (why) {
@@ -553,7 +554,10 @@
       };
       try {
         var payload = { text: text, mode: "full", rate: Number(settings.ttsRate) || 1.0 };
-        if (settings.ttsVoice) payload.voice = settings.ttsVoice;
+        // Серверный голос — отдельный ключ (ttsServerVoice); пусто → серверный дефолт.
+        // Старый общий ttsVoice оставлен как фолбэк ради совместимости.
+        var serverVoice = settings.ttsServerVoice || settings.ttsVoice;
+        if (serverVoice) payload.voice = serverVoice;
         if (settings.ttsLang !== "auto") payload.lang = settings.ttsLang;
         win.fetch(serverUrl + "/speak", {
           method: "POST",

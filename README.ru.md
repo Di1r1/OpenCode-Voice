@@ -239,8 +239,8 @@ export OPENCODE_VOICE_TTS=1
 
 Затем в popup расширения включите **🔊 Озвучивать ответы ассистента** и выберите движок
 (**Браузер**/**Сервер**), режим (**кратко** — первые предложения + строки с ошибками / **полностью**),
-язык, голос и скорость. Настройки хранятся в `chrome.storage.local` (ключи `tts`, `ttsEngine`,
-`ttsMode`, `ttsLang`, `ttsVoice`, `ttsRate`, `ttsLocalOnly`) и применяются без перезагрузки.
+язык, голос браузера, голос сервера (каталог Piper из `GET /voices`) и скорость. Настройки хранятся в `chrome.storage.local` (ключи `tts`, `ttsEngine`,
+`ttsMode`, `ttsLang`, `ttsVoice`, `ttsServerVoice`, `ttsRate`, `ttsLocalOnly`) и применяются без перезагрузки.
 `Ctrl+C` останавливает речь только пока она идёт; начало записи ставит её на паузу.
 
 Текст берётся из same-origin API web-UI (`/api/session`, `/session/{id}/message`), а не из DOM.

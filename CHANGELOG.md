@@ -27,9 +27,15 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   - Shared `cleanForSpeech` canon in `src/lib/text.ts` with Python and browser mirrors
     (`shared/tts-cases.json`; cross-parity test via `node:vm`).
   - Popup: toggle, engine (browser/server), mode, language, voice, local-only, speed, debug log.
-  - Tests: `pytest` 62 (+12), `npm test` 74.
+  - Tests: `pytest` 65 (+12 on `/speak`, +3 on `/voices`), `npm test` 74.
 
 ### Fixed
+- **Server TTS voices are now visible:** new read-only `GET /voices`
+  (`{status, engine, default, voices, enabled, available}`; token-protected like the
+  other endpoints) lists the installed Piper `*.onnx` voices. The popup shows them in a
+  separate **server voice** dropdown (`ttsServerVoice`), so the browser voice choice is no
+  longer sent to `/speak` by mistake (unknown name → `400` → silent browser fallback).
+  Extension `1.0.30`.
 - **npm packaging:** `extension/tts.js`, `shared/tts-cases.json` and `shared/strip-cases.json`
   were missing from `files` in `package.json`, so the published tarball shipped without TTS
   (30 files). Now 33 files — the browser TTS engine and the shared parity cases are included.

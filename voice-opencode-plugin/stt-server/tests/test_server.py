@@ -761,3 +761,32 @@ def test_health_reports_tts(client, monkeypatch, tmp_path):
     assert body["tts"]["enabled"] is True
     assert body["tts"]["engine"] == "piper"
     assert body["tts"]["available"] is True
+
+
+def test_voices_lists_catalog(client, monkeypatch, tmp_path):
+    voices = tmp_path / "voices"
+    voices.mkdir()
+    (voices / "ru_RU-b-medium.onnx").write_bytes(b"x")
+    (voices / "ru_RU-a-medium.onnx").write_bytes(b"x")
+    (voices / "notes.txt").write_bytes(b"not a voice")
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_VOICES_DIR", str(voices))
+    body = client.get("/voices").get_json()
+    assert body["status"] == "ok"
+    assert body["voices"] == ["ru_RU-a-medium", "ru_RU-b-medium"]
+    assert body["engine"] == "piper"
+
+
+def test_voices_empty_without_dir(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_VOICES_DIR", str(tmp_path / "no-such-dir"))
+    body = client.get("/voices").get_json()
+    assert body["status"] == "ok"
+    assert body["voices"] == []
+
+
+def test_voices_requires_token(client, monkeypatch, tmp_path):
+    _enable_tts(monkeypatch, tmp_path)
+    monkeypatch.setenv("OPENCODE_VOICE_TOKEN", "s3cret")
+    assert client.get("/voices").status_code == 401
+    ok = client.get("/voices", headers={"X-Voice-Token": "s3cret"})
+    assert ok.status_code == 200
+    assert ok.get_json()["status"] == "ok"

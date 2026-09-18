@@ -1587,6 +1587,24 @@ def speak_route():
         _tts_sem.release()
 
 
+@app.route("/voices", methods=["GET"])
+def voices_route():
+    """Каталог серверных TTS-голосов: {"status","engine","default","voices","enabled","available"}.
+
+    Аддитивный read-only роут для popup расширения (токен — общий, через
+    `_check_token`; rate-limit/лога нет — как у `/record/status`). Список виден
+    и при выключенном TTS, чтобы голос можно было выбрать заранее.
+    """
+    return jsonify({
+        "status": "ok",
+        "engine": TTS_ENGINE,
+        "default": TTS_VOICE,
+        "voices": _tts_allowed_voices(),
+        "enabled": TTS_ENABLED,
+        "available": _tts_available(),
+    })
+
+
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     _log_request("transcribe")

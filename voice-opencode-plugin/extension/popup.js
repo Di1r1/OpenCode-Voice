@@ -23,6 +23,7 @@ chrome.storage.local.get({ token: '', sttHost: '' }, (v) => {
 tokenEl.addEventListener('change', () => {
   chrome.storage.local.set({ token: tokenEl.value.trim() });
   checkServer();
+  fillServerVoices();
 });
 
 function authHeaders() {
@@ -88,8 +89,37 @@ if (typeof speechSynthesis !== 'undefined') {
   speechSynthesis.addEventListener('voiceschanged', () => fillVoices());
 }
 
+// Голоса серверного движка (Piper): каталог отдаёт GET /voices.
+// Отдельный ключ ttsServerVoice — выбор браузерного голоса не задевает.
+const ttsServerVoiceEl = document.getElementById('ttsServerVoice');
+async function fillServerVoices(selected) {
+  const cur = selected !== undefined ? selected : ttsServerVoiceEl.value;
+  const setOpts = (items, disabled) => {
+    ttsServerVoiceEl.innerHTML = '';
+    for (const it of items) {
+      const o = document.createElement('option');
+      o.value = it.value;
+      o.textContent = it.label;
+      if (it.disabled) o.disabled = true;
+      ttsServerVoiceEl.appendChild(o);
+    }
+    ttsServerVoiceEl.disabled = !!disabled;
+    ttsServerVoiceEl.value = cur || '';
+  };
+  try {
+    const res = await fetch(`${STT_SERVER}/voices`, { headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const info = await res.json();
+    const items = [{ value: '', label: `По умолчанию (${info.default || 'на сервере'})` }];
+    for (const name of info.voices || []) items.push({ value: name, label: name });
+    setOpts(items, false);
+  } catch {
+    setOpts([{ value: '', label: 'Сервер недоступен (проверьте /health)' }], true);
+  }
+}
+
 chrome.storage.local.get(
-  { tts: false, ttsEngine: 'browser', ttsMode: 'brief', ttsLang: 'auto', ttsVoice: '', ttsLocalOnly: true, ttsRate: 1.0, ttsDebug: false },
+  { tts: false, ttsEngine: 'browser', ttsMode: 'brief', ttsLang: 'auto', ttsVoice: '', ttsServerVoice: '', ttsLocalOnly: true, ttsRate: 1.0, ttsDebug: false },
   (v) => {
     ttsEl.checked = v.tts === true;
     ttsEngineEl.value = v.ttsEngine || 'browser';
@@ -101,6 +131,7 @@ chrome.storage.local.get(
     ttsDebugEl.checked = v.ttsDebug === true;
     ttsVoiceEl.value = v.ttsVoice || '';
     fillVoices(v.ttsVoice || '');
+    fillServerVoices(v.ttsServerVoice || '');
   }
 );
 ttsEl.addEventListener('change', () => chrome.storage.local.set({ tts: ttsEl.checked }));
@@ -114,6 +145,7 @@ ttsRateEl.addEventListener('input', () => {
 });
 ttsDebugEl.addEventListener('change', () => chrome.storage.local.set({ ttsDebug: ttsDebugEl.checked }));
 ttsVoiceEl.addEventListener('change', () => chrome.storage.local.set({ ttsVoice: ttsVoiceEl.value }));
+ttsServerVoiceEl.addEventListener('change', () => chrome.storage.local.set({ ttsServerVoice: ttsServerVoiceEl.value }));
 
 // Тест озвучки: просим content-скрипт активной вкладки произнести фразу —
 // так отделяем проблему синтеза от проблемы событий/DOM.

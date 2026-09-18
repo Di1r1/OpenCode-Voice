@@ -238,8 +238,8 @@ export OPENCODE_VOICE_TTS=1
 
 Then open the extension popup, turn on **🔊 Voice assistant answers** and pick the engine
 (**Browser**/**Server**), mode (**brief** — first sentences plus any error lines / **full**),
-language, voice and speed. Settings live in `chrome.storage.local` (keys `tts`, `ttsEngine`,
-`ttsMode`, `ttsLang`, `ttsVoice`, `ttsRate`, `ttsLocalOnly`) and apply without a reload. `Ctrl+C`
+language, browser voice, server voice (Piper catalog from `GET /voices`) and speed. Settings live in `chrome.storage.local` (keys `tts`, `ttsEngine`,
+`ttsMode`, `ttsLang`, `ttsVoice`, `ttsServerVoice`, `ttsRate`, `ttsLocalOnly`) and apply without a reload. `Ctrl+C`
 stops speech only while it is speaking; starting a recording pauses it.
 
 The text comes from the same-origin web-UI API (`/api/session`, `/session/{id}/message`), not from
