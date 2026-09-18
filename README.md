@@ -315,6 +315,24 @@ Known limitations of the TUI command (by OpenCode design): the hook blocks while
 | `OPENCODE_VOICE_TOKEN` | shared secret; when set, every endpoint except `/health` requires `X-Voice-Token` (or `Authorization: Bearer`) | empty (off) |
 | `PULSE_SERVER` | PulseAudio socket | `/mnt/wslg/PulseServer` on WSL2 |
 
+### Text-to-speech (server `/speak`, opt-in)
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `OPENCODE_VOICE_TTS` | enable `POST /speak` (when `0`, it answers `501`) | `0` |
+| `OPENCODE_VOICE_TTS_ENGINE` | synthesis engine | `piper` |
+| `OPENCODE_VOICE_TTS_VOICE` | Piper voice | `ru_RU-irina-medium` |
+| `OPENCODE_VOICE_TTS_RATE` | speech speed | `1.0` |
+| `OPENCODE_VOICE_TTS_MAX_CHARS` | trim long text (`413` above it) | `300` |
+| `OPENCODE_VOICE_TTS_BRIEF_SENTENCES` | `brief` mode: first sentences (errors always included) | `2` |
+| `OPENCODE_VOICE_TTS_MODE` | default mode: `brief` \| `full` (switchable in the popup) | `brief` |
+| `OPENCODE_VOICE_TTS_LANG` | voice language (`auto` = by reply language) | `auto` |
+| `OPENCODE_VOICE_TTS_BIN` | Piper binary (`./setup.sh --tts` installs it) | auto (`<home>/tts/piper/piper`) |
+| `OPENCODE_VOICE_TTS_VOICES_DIR` | Piper voices directory | auto (`<home>/tts/voices`) |
+| `OPENCODE_VOICE_TTS_CACHE_MB` | LRU WAV cache size, MB | `64` |
+| `OPENCODE_VOICE_TTS_TIMEOUT` | synthesis timeout, s | `60` |
+| `OPENCODE_VOICE_TTS_LOG` | synthesis log | `/tmp/opencode/voice-tts.log` |
+
 ### Recognition quality and models
 
 | Variable | Purpose | Default |

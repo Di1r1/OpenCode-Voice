@@ -316,6 +316,24 @@ TUI: хоткей `<leader>v` (leader по умолчанию `ctrl+x`) запу
 | `OPENCODE_VOICE_TOKEN` | общий секрет; если задан, все эндпоинты кроме `/health` требуют `X-Voice-Token` (или `Authorization: Bearer`) | пусто (выкл) |
 | `PULSE_SERVER` | сокет PulseAudio | `/mnt/wslg/PulseServer` в WSL2 |
 
+### Озвучка (серверный `/speak`, опционально)
+
+| Переменная | Назначение | По умолчанию |
+|----------|---------|---------|
+| `OPENCODE_VOICE_TTS` | включить `POST /speak` (при `0` отвечает `501`) | `0` |
+| `OPENCODE_VOICE_TTS_ENGINE` | движок синтеза | `piper` |
+| `OPENCODE_VOICE_TTS_VOICE` | голос Piper | `ru_RU-irina-medium` |
+| `OPENCODE_VOICE_TTS_RATE` | скорость речи | `1.0` |
+| `OPENCODE_VOICE_TTS_MAX_CHARS` | обрезка длинного текста (выше — `413`) | `300` |
+| `OPENCODE_VOICE_TTS_BRIEF_SENTENCES` | режим `кратко`: первые предложения (ошибки всегда включаются) | `2` |
+| `OPENCODE_VOICE_TTS_MODE` | режим по умолчанию: `brief` \| `full` (переключается в popup) | `brief` |
+| `OPENCODE_VOICE_TTS_LANG` | язык голоса (`auto` — по языку ответа) | `auto` |
+| `OPENCODE_VOICE_TTS_BIN` | бинарь Piper (ставит `./setup.sh --tts`) | авто (`<home>/tts/piper/piper`) |
+| `OPENCODE_VOICE_TTS_VOICES_DIR` | каталог голосов Piper | авто (`<home>/tts/voices`) |
+| `OPENCODE_VOICE_TTS_CACHE_MB` | размер LRU-кэша WAV, МБ | `64` |
+| `OPENCODE_VOICE_TTS_TIMEOUT` | таймаут синтеза, с | `60` |
+| `OPENCODE_VOICE_TTS_LOG` | лог синтеза | `/tmp/opencode/voice-tts.log` |
+
 ### Качество распознавания и модели
 
 | Переменная | Назначение | По умолчанию |
