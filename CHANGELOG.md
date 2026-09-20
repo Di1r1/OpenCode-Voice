@@ -40,6 +40,19 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   `speak()` router, which re-entered the server path — an infinite `/speak` request loop
   (tens of thousands of hits) that never reached browser speech. The fallback now calls
   the browser synthesizer directly. Extension `1.0.31`.
+- **Stuck speech watchdog (silent TTS on a stale tab):** the `speechSynthesis` queue and
+  the `AudioContext` live in the tab's renderer process — F5 keeps the process (a stuck
+  queue/suspended context survives reloads; only fully closing the tab kills it), so TTS
+  could go silent with no error. Each browser utterance now has a watchdog
+  (`utteranceBudget`: ~14 chars/s + margin, clamped to 10–60 s): on timeout one `cancel()`
+  + retry, on repeated stalls a toast telling to close the tab fully and reopen it.
+  Extension `1.0.33`.
+- **Server TTS on long answers (413 → silent browser voice):** `speakServer` sent the whole
+  text in one `POST /speak`, so anything over `OPENCODE_VOICE_TTS_MAX_CHARS` (default 300,
+  e.g. 391 chars) got `413 text too long` and fell back to Web Speech. The server engine now
+  chunks like the browser one (`chunkSentences`, ≤180 chars) and plays the WAVs in sequence;
+  only the remaining chunks fall back on fatal errors. Also fixed `X-Voice-Source: tts` being
+  overwritten by `button` from `content.js` `authHeaders()`. Extension `1.0.32`.
 - **`setup.sh --tts` installs all 4 Russian Piper voices** (`irina dmitri denis ruslan`,
   override via `OPENCODE_VOICE_TTS_VOICES`) instead of irina only — there is now something
   to pick in the popup server-voice dropdown. synthesis verified live with real Piper

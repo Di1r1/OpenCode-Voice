@@ -134,6 +134,19 @@
     return chunks;
   }
 
+  // Сторож залипшей речи: бюджет времени на один utterance. Очередь
+  // speechSynthesis живёт в процессе рендера вкладки и может залипнуть
+  // (F5 процесс не убивает — только полное закрытие вкладки); тогда нет ни
+  // onend, ни onerror — тишина без ошибок. Оценка: ~14 символов/с + запас.
+  function utteranceBudget(text, rate) {
+    var r = Number(rate) || 1.0;
+    if (!(r > 0)) r = 1.0;
+    var ms = (String(text == null ? "" : text).length * 70) / r + 8000;
+    if (ms < 10000) return 10000;
+    if (ms > 60000) return 60000;
+    return Math.round(ms);
+  }
+
   function hashStr(s) {
     var h = 5381;
     for (var i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
@@ -208,6 +221,8 @@
     var spoken = Object.create(null);
     var messages = Object.create(null); // messageID -> { role, completed, order, parts }
     var maxTimer = null;
+    var speechWdt = null; // сторож залипшего utterance (см. utteranceBudget)
+    var stuckCount = 0; // подряд зависших utterances (сброс при успехе)
     var audioCtx = null;
     var audioEl = null;
     var serverSource = null;
@@ -383,6 +398,7 @@
     function stopSpeaking(show) {
       pending = null;
       if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
+      if (speechWdt) { clearTimeout(speechWdt); speechWdt = null; }
       if (serverSource) { try { serverSource.stop(); } catch (e) {} serverSource = null; }
       if (audioEl) { try { audioEl.pause(); } catch (e) {} audioEl = null; }
       if (win.speechSynthesis) win.speechSynthesis.cancel();
@@ -442,23 +458,51 @@
             return;
           }
           var chunkText = chunks[idx++];
-          var send = function (withoutVoice) {
+          var send = function (withoutVoice, retried) {
             var u = new win.SpeechSynthesisUtterance(chunkText);
             u.lang = (voice && voice.lang) || lang;
             u.rate = Number(settings.ttsRate) || 1.0;
             if (!withoutVoice && voice) u.voice = voice;
-            u.onend = function () { speakFailures = 0; next(); };
+            var settled = false;
+            var clearWdt = function () { if (speechWdt) { clearTimeout(speechWdt); speechWdt = null; } };
+            // Нет ни onend, ни onerror за бюджет — очередь залипла (процесс
+            // рендера; F5 не лечит, лечит полное закрытие вкладки).
+            speechWdt = setTimeout(function () {
+              if (settled || !speaking) return;
+              settled = true;
+              speechWdt = null;
+              dbg("utterance timeout", chunkText.length);
+              if (!retried) {
+                try { synth.cancel(); } catch (ee) {}
+                setTimeout(function () { if (speaking) send(withoutVoice, true); }, 200);
+                return;
+              }
+              speaking = false;
+              stuckCount++;
+              if (stuckCount >= 2) {
+                stuckCount = 0;
+                toast("Синтез завис — закройте вкладку полностью и откройте заново", "error", 6000);
+              } else {
+                pending = text;
+              }
+            }, utteranceBudget(chunkText, u.rate));
+            u.onend = function () { if (settled) return; settled = true; clearWdt(); speakFailures = 0; stuckCount = 0; next(); };
             u.onerror = function (e) {
+              if (settled) return;
               var err = e && e.error;
               dbg("utterance error", err);
               if (!speaking) return;
               if (err === "canceled" || err === "interrupted") return;
               if (!withoutVoice) {
+                settled = true;
+                clearWdt();
                 voice = null;
                 try { synth.cancel(); } catch (ee) {}
                 setTimeout(function () { if (speaking) send(true); }, 150);
                 return;
               }
+              settled = true;
+              clearWdt();
               speaking = false;
               speakFailures++;
               dbg("speak failure", speakFailures, err);
@@ -540,54 +584,76 @@
       } catch (e) { fail(String(e)); }
     }
 
-    // Серверный движок: POST /speak -> WAV (играет браузер). При любой ошибке —
-    // фолбэк на Web Speech, чтобы ответ всё равно прозвучал.
+    // Серверный движок: POST /speak -> WAV (играет браузер). Длинный текст режем
+    // на чанки (как браузерный движок), иначе /speak отвечает 413 и всё целиком
+    // откатывалось на Web Speech. При фатальной ошибке — фолбэк остатка на
+    // Web Speech, чтобы ответ всё равно прозвучал.
     function speakServer(text) {
       if (!hasUserActivation()) { dbg("no user activation, defer (server)"); pending = text; return; }
+      var chunks = chunkSentences(text);
+      if (!chunks.length) return;
       speaking = true;
       toast("🔊 Говорю… (сервер)", "info", 2000);
-      dbg("speak server", { chars: text.length, voice: settings.ttsServerVoice || settings.ttsVoice || null });
+      dbg("speak server", { chars: text.length, chunks: chunks.length, voice: settings.ttsServerVoice || settings.ttsVoice || null });
       var secs = Number(settings.ttsMaxSeconds) || 0;
       if (secs > 0) maxTimer = setTimeout(function () { stopSpeaking(true); }, secs * 1000);
-      var fallback = function (why) {
+      var idx = 0;
+      var fallbackRest = function (why, fromIdx) {
         if (!speaking) return;
         speaking = false;
         if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
         dbg("server fallback -> browser", why);
         // Важно: напрямую в браузерный синтез, а не через speak() —
         // иначе роутер вернёт нас в speakServer и будет бесконечный цикл.
-        speakBrowser(text);
+        var rest = chunks.slice(fromIdx).join(" ") || text;
+        speakBrowser(rest);
       };
-      try {
-        var payload = { text: text, mode: "full", rate: Number(settings.ttsRate) || 1.0 };
+      var fetchChunk = function (chunkText) {
+        var payload = { text: chunkText, mode: "full", rate: Number(settings.ttsRate) || 1.0 };
         // Серверный голос — отдельный ключ (ttsServerVoice); пусто → серверный дефолт.
         // Старый общий ttsVoice оставлен как фолбэк ради совместимости.
         var serverVoice = settings.ttsServerVoice || settings.ttsVoice;
         if (serverVoice) payload.voice = serverVoice;
         if (settings.ttsLang !== "auto") payload.lang = settings.ttsLang;
-        win.fetch(serverUrl + "/speak", {
+        return win.fetch(serverUrl + "/speak", {
           method: "POST",
+          // authHeaders() от content.js несёт X-Voice-Source: button — наш tts
+          // должен побеждать, поэтому спредим его первым.
           headers: Object.assign(
-            { "Content-Type": "application/json", "X-Voice-Source": "tts" },
-            authHeaders()
+            {},
+            authHeaders(),
+            { "Content-Type": "application/json", "X-Voice-Source": "tts" }
           ),
           body: JSON.stringify(payload)
         }).then(function (r) {
           if (!r.ok) {
             return r.json().catch(function () { return {}; }).then(function (b) {
-              fallback("http " + r.status + (b && b.error ? " " + b.error : ""));
-              return null;
+              throw new Error("http " + r.status + (b && b.error ? " " + b.error : ""));
             });
           }
           return r.arrayBuffer();
-        }).then(function (buf) {
-          if (!buf || !speaking) return;
-          playBuffer(buf, function () {
-            if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
-            speaking = false;
-          }, fallback);
-        }).catch(function (e) { fallback("fetch: " + (e && e.message)); });
-      } catch (e) { fallback("throw: " + e); }
+        });
+      };
+      var next = function () {
+        if (!speaking || idx >= chunks.length) {
+          if (maxTimer) { clearTimeout(maxTimer); maxTimer = null; }
+          speaking = false;
+          return;
+        }
+        var cur = idx;
+        var chunkText = chunks[cur];
+        try {
+          fetchChunk(chunkText).then(function (buf) {
+            if (!speaking || cur !== idx) return;
+            playBuffer(buf, function () {
+              if (!speaking) return;
+              idx++;
+              next();
+            }, function (why) { fallbackRest("play: " + why, cur); });
+          }).catch(function (e) { fallbackRest("fetch: " + (e && e.message), cur); });
+        } catch (e) { fallbackRest("throw: " + e, cur); }
+      };
+      next();
     }
 
     function onKeyDown(e) {
@@ -695,6 +761,7 @@
     pickVoice: pickVoice,
     briefSentences: briefSentences,
     chunkSentences: chunkSentences,
+    utteranceBudget: utteranceBudget,
     dedupKey: dedupKey,
     comboMatches: comboMatches,
     DEFAULTS: DEFAULTS,

@@ -79,6 +79,12 @@ export async function ensureSttServer(directory: string, log?: LogFn): Promise<b
       return false
     }
     const env: NodeJS.ProcessEnv = { ...process.env }
+    // TTS читает OPENCODE_VOICE_TTS один раз при старте (stt_server.py),
+    // а вотчдог/heal его не включают. Чтобы серверная озвучка работала
+    // всегда после перезапуска OpenCode, поднимаем флаг, если он не задан явно.
+    if (!("OPENCODE_VOICE_TTS" in env)) {
+      env.OPENCODE_VOICE_TTS = "1"
+    }
     if (!env.PULSE_SERVER && existsSync("/mnt/wslg/PulseServer")) {
       env.PULSE_SERVER = "unix:/mnt/wslg/PulseServer"
     }

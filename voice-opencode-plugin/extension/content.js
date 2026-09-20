@@ -650,7 +650,7 @@ try {
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.31 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.33 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

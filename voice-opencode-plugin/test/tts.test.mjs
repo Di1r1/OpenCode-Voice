@@ -27,7 +27,7 @@ vm.runInContext(readFileSync(here("../extension/tts.js"), "utf8"), sandbox)
 const TTS = sandbox.OpenCodeVoiceTTS
 
 test("tts.js exposes helpers", () => {
-  for (const name of ["cleanForSpeech", "detectLang", "pickVoice", "briefSentences", "chunkSentences", "dedupKey", "comboMatches", "start"]) {
+  for (const name of ["cleanForSpeech", "detectLang", "pickVoice", "briefSentences", "chunkSentences", "utteranceBudget", "dedupKey", "comboMatches", "start"]) {
     assert.equal(typeof TTS[name], "function", `missing ${name}`)
   }
   assert.equal(TTS.DEFAULTS.ttsEngine, "browser", "engine defaults to the browser (opt-in server)")
@@ -79,6 +79,15 @@ test("chunkSentences splits long text without loss", () => {
   assert.ok(chunks.length >= 2)
   assert.ok(chunks.every((c) => c.length <= 80))
   assert.equal(chunks.join(" ").replace(/\s+/g, " "), long.replace(/\s+/g, " "))
+})
+
+test("utteranceBudget scales with length/rate and is clamped", () => {
+  const short = TTS.utteranceBudget("Привет.", 1.0)
+  const long = TTS.utteranceBudget("Предложение. ".repeat(60), 1.0)
+  assert.ok(long > short, "longer text gets a bigger budget")
+  assert.ok(TTS.utteranceBudget("x".repeat(100), 2.0) < TTS.utteranceBudget("x".repeat(100), 1.0), "higher rate shrinks the budget")
+  assert.ok(short >= 10000 && long <= 60000, "budget is clamped to [10s, 60s]")
+  assert.equal(TTS.utteranceBudget("", 1.0), 10000, "empty text gets the floor")
 })
 
 test("dedupKey stable and distinct", () => {
