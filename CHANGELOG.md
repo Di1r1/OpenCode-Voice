@@ -10,7 +10,7 @@ Version in code: `PLUGIN_VERSION` (`voice-opencode-plugin/src/lib/config.ts`), `
 (`voice-opencode-plugin/stt-server/stt_server.py`), `package.json` and `/health` (field `version`).
 The Chrome extension is versioned independently (`voice-opencode-plugin/extension/manifest.json`).
 
-## [Unreleased]
+## [0.4.1] - 2026-09-20
 
 ### Fixed
 - **`setup.sh --model-size <size>` (space form) was dead:** the `for arg in "$@"`
@@ -22,6 +22,13 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   silence thresholds are now canonical `silenceRms()`/`silencePeak()` (env +
   `shared/stt-spec.json`); non-capturing groups in the TS/Python/browser
   `IMAGE_RE`/`AUTOLINK_RE` (output parity unchanged).
+- **Hermetic `/speak` tests:** the `_reset_tts` fixture now points the voices dir
+  at an empty tmp dir instead of deleting the env override — real voices installed
+  by `setup.sh --tts` no longer fail the suite with `400` on dev machines (`65/65`).
+- **Docs symmetry (EN/RU):** READMEs now cover `setup.sh --all`, the EN voice,
+  `env.sh`, the popup RU/EN switch, server chunking and the stuck-speech watchdog;
+  `SKILLS_GUIDE.md` §7 and `AGENTS.md` no longer claim skills are versioned
+  (they are git-ignored local-only, like agents).
 
 ## [0.4.0] - 2026-09-20
 

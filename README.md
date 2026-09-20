@@ -41,10 +41,11 @@ cd OpenCode-Voice/voice-opencode-plugin
 
 # one command: checks, deps, plugin entry points, config hints, doctor
 ./setup.sh                  # CPU: faster-whisper (model downloads on first run)
+./setup.sh --all            # everything at once: deps, TTS, config write, env file, doctor
 ./setup.sh --gpu            # optional: build whisper.cpp with CUDA + fetch a ggml model
 ```
 
-`setup.sh` checks the environment, installs `stt-server/requirements.txt`, runs `sync-plugin.sh`, then prints the exact `~/.config/opencode/opencode.json` and `tui.json` lines to add (use `--write-config` to patch them with a backup; `--check` prints the plan and changes nothing).
+`setup.sh` checks the environment, installs `stt-server/requirements.txt`, runs `sync-plugin.sh`, then prints the exact `~/.config/opencode/opencode.json` and `tui.json` lines to add (use `--write-config` to patch them with a backup; `--check` prints the plan and changes nothing; `--all` does everything at once and writes `$OPENCODE_VOICE_HOME/env.sh`).
 
 Manual equivalent:
 
@@ -227,13 +228,14 @@ Two engines:
 - **Server** — `POST /speak` on the local STT server returns a WAV that the browser plays, using
   offline [Piper](https://github.com/rhasspy/piper) voices. Enable with `OPENCODE_VOICE_TTS=1`.
 
-Install the server engine (Piper + a Russian voice) into `$OPENCODE_VOICE_HOME/tts`:
+Install the server engine (Piper + Russian and English voices) into `$OPENCODE_VOICE_HOME/tts`:
 
 ```bash
-./setup.sh --tts           # downloads piper + all 4 RU voices (~260 MB)
+./setup.sh --tts           # downloads piper + all 4 RU voices (~260 MB) + EN voice lessac (~60 MB)
 export OPENCODE_VOICE_TTS=1
 # OPENCODE_VOICE_TTS_BIN=$HOME/.local/share/opencode-voice/tts/piper/piper
 # OPENCODE_VOICE_TTS_VOICES_DIR=$HOME/.local/share/opencode-voice/tts/voices
+# ...or source the persisted file written by setup.sh: source $HOME/.local/share/opencode-voice/env.sh
 ```
 
 > **Persistence:** the server reads `OPENCODE_VOICE_TTS` once at startup. Export it in the
@@ -243,12 +245,15 @@ export OPENCODE_VOICE_TTS=1
 
 Then open the extension popup, turn on **🔊 Voice assistant answers** and pick the engine
 (**Browser**/**Server**), mode (**brief** — first sentences plus any error lines / **full**),
-language, browser voice, server voice (Piper catalog from `GET /voices`) and speed. Settings live in `chrome.storage.local` (keys `tts`, `ttsEngine`,
+language, browser voice, server voice (Piper catalog from `GET /voices`) and speed. The popup UI itself
+switches RU/EN (top selector, key `uiLang`). Settings live in `chrome.storage.local` (keys `tts`, `ttsEngine`,
 `ttsMode`, `ttsLang`, `ttsVoice`, `ttsServerVoice`, `ttsRate`, `ttsLocalOnly`) and apply without a reload. `Ctrl+C`
 stops speech only while it is speaking; starting a recording pauses it.
 
 The text comes from the same-origin web-UI API (`/api/session`, `/session/{id}/message`), not from
-DOM scraping. The server route reuses the usual token/limits/CORS, keeps an LRU WAV cache and
+DOM scraping. Long answers are chunked (≤180 chars) so the server `maxChars` limit never triggers a
+fallback; a stuck browser utterance is retried once, then a toast tells you to fully close and reopen
+the tab (a stale renderer survives F5). The server route reuses the usual token/limits/CORS, keeps an LRU WAV cache and
 returns `501` when disabled — the extension then falls back to the browser voice. Synthesis log:
 `/tmp/opencode/voice-tts.log`.
 

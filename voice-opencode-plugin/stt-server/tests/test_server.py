@@ -635,14 +635,19 @@ def _fake_piper(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def _reset_tts(monkeypatch):
+def _reset_tts(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "TTS_ENABLED", False)
     monkeypatch.setattr(srv, "TTS_ENGINE", "piper")
     monkeypatch.setattr(srv, "TTS_VOICE", "test-voice")
     monkeypatch.setattr(srv, "TTS_MAX_CHARS", 300)
     monkeypatch.setattr(srv, "TTS_CACHE_MAX_MB", 64)
     monkeypatch.delenv("OPENCODE_VOICE_TTS_BIN", raising=False)
-    monkeypatch.delenv("OPENCODE_VOICE_TTS_VOICES_DIR", raising=False)
+    # Герметичность: на машинах с setup.sh --tts каталог голосов по умолчанию
+    # не пуст, и whitelist отбивал бы тестовый test-voice с 400. Подменяем его
+    # пустым каталогом (тесты со своим каталогом переопределяют следом).
+    hermetic_voices = tmp_path / "hermetic-voices"
+    hermetic_voices.mkdir(exist_ok=True)
+    monkeypatch.setenv("OPENCODE_VOICE_TTS_VOICES_DIR", str(hermetic_voices))
     # Never write into the real TTS log from tests.
     monkeypatch.setenv("OPENCODE_VOICE_TTS_LOG", "/dev/null")
     srv._tts_sem = srv.threading.Semaphore(1)
