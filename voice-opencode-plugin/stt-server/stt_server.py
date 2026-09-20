@@ -535,7 +535,7 @@ model = None
 MODEL_SIZE = _default_model_size()
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
-SERVER_VERSION = "0.3.1"
+SERVER_VERSION = "0.4.0"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
 FT_MODEL = _default_model_size()

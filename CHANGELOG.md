@@ -10,7 +10,7 @@ Version in code: `PLUGIN_VERSION` (`voice-opencode-plugin/src/lib/config.ts`), `
 (`voice-opencode-plugin/stt-server/stt_server.py`), `package.json` and `/health` (field `version`).
 The Chrome extension is versioned independently (`voice-opencode-plugin/extension/manifest.json`).
 
-## [Unreleased]
+## [0.4.0] - 2026-09-20
 
 ### Added
 - **Text-to-speech (optional, off by default):** assistant answers can be read aloud.
