@@ -8,6 +8,7 @@
 #
 # Использование:
 #   ./setup.sh                     # CPU: зависимости + проверки
+#   ./setup.sh --all               # мастер одной команды: всё разом (pip, TTS, конфиг, env, doctor)
 #   ./setup.sh --gpu               # + собрать whisper.cpp (CUDA) + модель
 #   ./setup.sh --tts               # + скачать Piper и голос (серверная озвучка, POST /speak)
 #   ./setup.sh --model-size small  # размер ggml-модели для --gpu (tiny|base|small|medium|large-v3)
@@ -19,7 +20,8 @@
 # Переменные: OPENCODE_VOICE_HOME (по умолчанию ~/.local/share/opencode-voice),
 #             OPENCODE_VOICE_WHISPER_DIR (по умолчанию $OPENCODE_VOICE_HOME/whisper),
 #             CUDA_HOME/CUDA_PATH (если CUDA Toolkit в нестандартном месте);
-#             OPENCODE_VOICE_TTS_HOME/VOICES_DIR/VOICE (для --tts; голос по умолчанию ru_RU-irina-medium).
+#             OPENCODE_VOICE_TTS_HOME/VOICES_DIR/VOICE (для --tts; голос по умолчанию ru_RU-irina-medium;
+#             английский — OPENCODE_VOICE_TTS_VOICES_EN, по умолчанию lessac).
 
 set -euo pipefail
 
@@ -27,6 +29,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
 MODE_GPU=0
+GPU_EXPLICIT=0
 CHECK_ONLY=0
 ASSUME_YES=0
 DO_PIP=1
@@ -34,6 +37,7 @@ DO_SYNC=1
 CONFIGURE=0
 WRITE_CONFIG=0
 DO_TTS=0
+DO_ALL=0
 MODEL_SIZE="${WHISPER_CPP_MODEL_SIZE:-medium}"
 
 HOME_DIR="${OPENCODE_VOICE_HOME:-$HOME/.local/share/opencode-voice}"
@@ -53,9 +57,10 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 for arg in "$@"; do
   case "$arg" in
-    --gpu) MODE_GPU=1 ;;
-    --cpu) MODE_GPU=0 ;;
+    --gpu) MODE_GPU=1; GPU_EXPLICIT=1 ;;
+    --cpu) MODE_GPU=0; GPU_EXPLICIT=1 ;;
     --tts) DO_TTS=1 ;;
+    --all) DO_ALL=1 ;;
     --check) CHECK_ONLY=1 ;;
     --yes|-y) ASSUME_YES=1 ;;
     --no-pip) DO_PIP=0 ;;
@@ -64,7 +69,7 @@ for arg in "$@"; do
     --write-config) CONFIGURE=1; WRITE_CONFIG=1 ;;
     --model-size) shift; MODEL_SIZE="${1:?--model-size требует значение}" ;;
     --model-size=*) MODEL_SIZE="${arg#*=}" ;;
-    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) err "неизвестный флаг: $arg (см. --help)"; exit 2 ;;
   esac
 done
@@ -78,11 +83,21 @@ ask() {
 
 in_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
 
+# Мастер одной команды: pip + TTS + запись конфига + env-файл + doctor, без вопросов.
+# GPU — только если CUDA видна (явные --gpu/--cpu побеждают авто).
+if [ "$DO_ALL" = "1" ]; then
+  DO_TTS=1; CONFIGURE=1; WRITE_CONFIG=1; ASSUME_YES=1
+  if [ "$GPU_EXPLICIT" != "1" ]; then
+    if have nvcc; then MODE_GPU=1; else MODE_GPU=0; fi
+  fi
+fi
+
 echo "OpenCode Voice — установка"
 info "репозиторий:  $REPO"
 info "модель/каталог: $WHISPER_DIR (размер: $MODEL_SIZE)"
 [ "$MODE_GPU" = "1" ] && info "режим: GPU (whisper.cpp + CUDA)" || info "режим: CPU (faster-whisper)"
 [ "$DO_TTS" = "1" ] && info "TTS: Piper + голос $TTS_VOICE -> $TTS_DIR"
+[ "$DO_ALL" = "1" ] && info "мастер: всё разом, конфиг пишется, env — в $HOME_DIR/env.sh"
 echo
 
 # ---------------------------------------------------------------------------
@@ -145,7 +160,9 @@ if [ "$CHECK_ONLY" = "1" ]; then
   n=0
   if [ "$DO_PIP" = "1" ]; then n=$((n+1)); echo "  $n. python3 -m pip install -r voice-opencode-plugin/stt-server/requirements.txt (faster-whisper)"; fi
   if [ "$MODE_GPU" = "1" ]; then n=$((n+1)); echo "  $n. собрать whisper.cpp с CUDA и скачать ggml-$MODEL_SIZE.bin в $WHISPER_DIR"; fi
-  if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. скачать Piper и русские голоса (${OPENCODE_VOICE_TTS_VOICES:-irina dmitri denis ruslan}) в $TTS_DIR"; fi
+  if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. скачать Piper, русские голоса (${OPENCODE_VOICE_TTS_VOICES:-irina dmitri denis ruslan}) и английские (${OPENCODE_VOICE_TTS_VOICES_EN:-lessac}) в $TTS_DIR"; fi
+  if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. записать $HOME_DIR/env.sh (OPENCODE_VOICE_TTS=1, бинарь и каталог голосов)"; fi
+  if [ "$WRITE_CONFIG" = "1" ]; then n=$((n+1)); echo "  $n. записать пути плагина в конфиг OpenCode (с бэкапом)"; fi
   if [ "$DO_SYNC" = "1" ]; then n=$((n+1)); echo "  $n. bash voice-opencode-plugin/sync-plugin.sh (сгенерировать entry-файлы)"; fi
   n=$((n+1)); echo "  $n. показать строки для ~/.config/opencode/opencode.json и tui.json"
   n=$((n+1)); echo "  $n. bash voice-opencode-plugin/doctor.sh"
@@ -290,12 +307,40 @@ if [ "$DO_TTS" = "1" ]; then
     done
   done
 
+  # Английские голоса Piper (medium): один по умолчанию, чтобы англоязычным было
+  # из чего выбирать в popup. Добавить ещё: OPENCODE_VOICE_TTS_VOICES_EN="lessac ryan".
+  TTS_VOICE_NAMES_EN="${OPENCODE_VOICE_TTS_VOICES_EN:-lessac}"
+  TTS_VOICE_URL_REPO_EN="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US"
+  for _name in $TTS_VOICE_NAMES_EN; do
+    _vname="en_US-${_name}-medium"
+    _vbase="$TTS_VOICE_URL_REPO_EN/$_name/medium/$_vname"
+    for ext in onnx onnx.json; do
+      VOICE_FILE="$TTS_VOICES_DIR/$_vname.$ext"
+      if [ -s "$VOICE_FILE" ]; then ok "голос уже есть: $VOICE_FILE"; continue; fi
+      info "скачиваю $_vname.$ext"
+      if curl -fL --retry 3 -o "$VOICE_FILE.part" "$_vbase.$ext"; then
+        mv -f "$VOICE_FILE.part" "$VOICE_FILE"; ok "$VOICE_FILE"
+      else
+        rm -f "$VOICE_FILE.part"; warn "не удалось скачать $_vname.$ext"
+      fi
+    done
+  done
+
   echo
   info "серверный TTS выключен по умолчанию — включите переменными ТАМ, откуда стартует OpenCode:"
   echo "    export OPENCODE_VOICE_TTS=1   # сервер читает флаг один раз при старте; heal/вотчдог его не включат"
   echo "    OPENCODE_VOICE_TTS_BIN=$PIPER_BIN"
   echo "    OPENCODE_VOICE_TTS_VOICES_DIR=$TTS_VOICES_DIR"
   echo "  Затем перезапустите сервер; в popup расширения выберите движок «Сервер»; диагностика — ./doctor.sh"
+  # Сохраняем переменные в файл, чтобы переживали перезапуски шелла/машины.
+  ENV_FILE="$HOME_DIR/env.sh"
+  {
+    echo "# OpenCode Voice env (сгенерировано setup.sh). Подключите: source \"$ENV_FILE\""
+    echo "export OPENCODE_VOICE_TTS=1"
+    echo "export OPENCODE_VOICE_TTS_BIN=\"$PIPER_BIN\""
+    echo "export OPENCODE_VOICE_TTS_VOICES_DIR=\"$TTS_VOICES_DIR\""
+  } > "$ENV_FILE"
+  ok "env-файл: $ENV_FILE (добавьте 'source \"$ENV_FILE\"' в ~/.bashrc)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -386,3 +431,7 @@ echo "  1) если меняли конфиг — перезапустите Ope
 echo "  2) сервер поднимется сам при загрузке плагина (или: python3 -u $HERE/stt-server/stt_server.py --port 8765);"
 echo "  3) в TUI: /voice  (push-to-talk), /voice doctor, /voice help;"
 echo "  4) для кнопки в веб-UI установите расширение из $HERE/extension (chrome://extensions → Load unpacked)."
+echo "  5) после обновлений расширения: Reload в chrome://extensions + F5 вкладки (иначе тишина без ошибок);"
+if [ "$DO_TTS" = "1" ]; then
+echo "  6) TTS: source $HOME_DIR/env.sh (или добавьте в ~/.bashrc); в popup выберите движок «Сервер»."
+fi

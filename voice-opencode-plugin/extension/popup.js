@@ -6,6 +6,160 @@
 let STT_SERVER = 'http://127.0.0.1:8765';
 // Пока идёт восстановление, не показываем красные ошибки на транзиентных сбоях.
 let healing = false;
+
+// Язык интерфейса popup (chrome.storage.local.uiLang, по умолчанию ru).
+// Статика — через data-i18n в popup.html, динамика — через t() ниже.
+const UI_LANGS = ['ru', 'en'];
+let uiLang = 'ru';
+const UI = {
+  ru: {
+    checking: 'Проверка...',
+    beeps: 'Звуковые сигналы',
+    hotkeyLabel: 'Комбинация (удержание)',
+    hk_alt_z: 'Alt+Z (по умолчанию)',
+    sendHotkey: 'Alt+X — запись и сразу отправка',
+    tts: '🔊 Озвучивать ответы ассистента',
+    ttsEngineLabel: 'Движок озвучки',
+    eng_browser: 'Браузер (Web Speech)',
+    eng_server: 'Сервер (Piper; нужен OPENCODE_VOICE_TTS=1)',
+    ttsModeLabel: 'Режим озвучки',
+    mode_brief: 'Кратко (первые предложения)',
+    mode_full: 'Полностью',
+    ttsLangLabel: 'Язык озвучки',
+    lang_auto: 'Авто (по тексту)',
+    lang_ru: 'Русский',
+    voiceLabel: 'Голос',
+    voice_auto: 'Авто (по языку)',
+    remoteVoice: ' (сеть)',
+    serverVoiceLabel: 'Голос сервера (Piper)',
+    serverVoice_default: 'По умолчанию ({def})',
+    serverVoice_down: 'Сервер недоступен (проверьте /health)',
+    localOnly: 'Только локальные голоса',
+    debug: 'Лог в консоль (отладка)',
+    speed: 'Скорость:',
+    tokenLabel: 'Токен доступа',
+    tokenPh: 'OPENCODE_VOICE_TOKEN (необязательно)',
+    uiLangLabel: 'Язык интерфейса',
+    beepTest: '🔔 Проверить звук',
+    ttsTest: '🔊 Тест озвучки',
+    sttTest: 'Тест STT сервера',
+    sttTesting: 'Тестирование...',
+    heal: '🔧 Восстановить сервер',
+    healing: '🔧 Восстанавливаю…',
+    openSettings: 'Открыть настройки',
+    infoFooter: 'Работает на http://127.0.0.1:8765 (локальный STT-сервер). Установка и запуск — ./setup.sh, диагностика — doctor.sh.',
+    versions: 'Расширение v{ext} · сервер v{ver} ({backend}/{device})',
+    statusOk: '✅ STT сервер v{ver} · {backend}',
+    statusDown: '❌ STT сервер недоступен: {err}',
+    statusWait: '⏳ Жду сервер…',
+    statusWaitSec: '⏳ Жду сервер… {sec} с',
+    statusRestarted: '✅ Сервер перезапущен · v{ver} · {backend}',
+    statusRestartFail: '❌ Сервер не поднялся за отведённое время — запустите doctor.sh --fix (или ./setup.sh)',
+    testSent: '🔊 Тест отправлен — должна звучать фраза',
+    noContentScript: '⚠️ Content-скрипт не ответил',
+    openPage: '⚠️ Откройте страницу OpenCode и обновите её (F5)',
+    noTab: 'нет активной вкладки',
+    noStatus: 'content-скрипт не отвечает (обновите страницу F5)',
+    onServer: 'на сервере',
+    emptyResp: '(пусто)',
+    statusNA: 'статус недоступен (обновите страницу F5)',
+    testOk: '✅ Тест OK: "{text}"',
+    testErr: '❌ Ошибка теста: {err}',
+    healingServer: '🔧 Перезапускаю STT-сервер…',
+    beepDown: '❌ STT сервер недоступен',
+  },
+  en: {
+    checking: 'Checking...',
+    beeps: 'Beeps',
+    hotkeyLabel: 'Hotkey (hold)',
+    hk_alt_z: 'Alt+Z (default)',
+    sendHotkey: 'Alt+X — record and send immediately',
+    tts: '🔊 Read assistant answers aloud',
+    ttsEngineLabel: 'TTS engine',
+    eng_browser: 'Browser (Web Speech)',
+    eng_server: 'Server (Piper; needs OPENCODE_VOICE_TTS=1)',
+    ttsModeLabel: 'TTS mode',
+    mode_brief: 'Brief (first sentences)',
+    mode_full: 'Full',
+    ttsLangLabel: 'TTS language',
+    lang_auto: 'Auto (by text)',
+    lang_ru: 'Russian',
+    voiceLabel: 'Voice',
+    voice_auto: 'Auto (by language)',
+    remoteVoice: ' (network)',
+    serverVoiceLabel: 'Server voice (Piper)',
+    serverVoice_default: 'Default ({def})',
+    serverVoice_down: 'Server unavailable (check /health)',
+    localOnly: 'Local voices only',
+    debug: 'Console log (debug)',
+    speed: 'Speed:',
+    tokenLabel: 'Access token',
+    tokenPh: 'OPENCODE_VOICE_TOKEN (optional)',
+    uiLangLabel: 'Interface language',
+    beepTest: '🔔 Test sound',
+    ttsTest: '🔊 Test TTS',
+    sttTest: 'Test STT server',
+    sttTesting: 'Testing...',
+    heal: '🔧 Heal server',
+    healing: '🔧 Healing…',
+    openSettings: 'Open settings',
+    infoFooter: 'Runs on http://127.0.0.1:8765 (local STT server). Install & run — ./setup.sh, diagnostics — doctor.sh.',
+    versions: 'Extension v{ext} · server v{ver} ({backend}/{device})',
+    statusOk: '✅ STT server v{ver} · {backend}',
+    statusDown: '❌ STT server unavailable: {err}',
+    statusWait: '⏳ Waiting for server…',
+    statusWaitSec: '⏳ Waiting for server… {sec}s',
+    statusRestarted: '✅ Server restarted · v{ver} · {backend}',
+    statusRestartFail: '❌ Server did not come up in time — run doctor.sh --fix (or ./setup.sh)',
+    testSent: '🔊 Test sent — you should hear a phrase',
+    noContentScript: '⚠️ Content script did not respond',
+    openPage: '⚠️ Open the OpenCode page and reload it (F5)',
+    noTab: 'no active tab',
+    noStatus: 'content script is not responding (reload the page with F5)',
+    onServer: 'on server',
+    emptyResp: '(empty)',
+    statusNA: 'status unavailable (reload the page with F5)',
+    testOk: '✅ Test OK: "{text}"',
+    testErr: '❌ Test error: {err}',
+    healingServer: '🔧 Restarting STT server…',
+    beepDown: '❌ STT server unavailable',
+  },
+};
+
+function t(key, vars) {
+  let s = (UI[uiLang] && UI[uiLang][key]) ?? UI.ru[key] ?? key;
+  if (vars) for (const k in vars) s = s.replaceAll('{' + k + '}', String(vars[k]));
+  return s;
+}
+
+function applyUiLang(lang) {
+  uiLang = UI_LANGS.includes(lang) ? lang : 'ru';
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    const v = (UI[uiLang] && UI[uiLang][el.getAttribute('data-i18n')]) || '';
+    if (v) el.textContent = v;
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach((el) => {
+    const v = (UI[uiLang] && UI[uiLang][el.getAttribute('data-i18n-ph')]) || '';
+    if (v) el.placeholder = v;
+  });
+  const sel = document.getElementById('uiLang');
+  if (sel) sel.value = uiLang;
+  // Динамические строки перерисовываем на новом языке.
+  if (typeof fillVoices === 'function') fillVoices();
+  if (typeof fillServerVoices === 'function') void fillServerVoices();
+  if (typeof checkServer === 'function') void checkServer();
+  if (typeof refreshTtsStatus === 'function') void refreshTtsStatus();
+  // Кнопки с состоянием (Тест/Восстановление) возвращаем к покоящимся подписям.
+  if (typeof testBtn !== 'undefined' && testBtn && !testBtn.disabled) testBtn.textContent = t('sttTest');
+  if (typeof healBtn !== 'undefined' && healBtn && !healBtn.disabled) healBtn.textContent = t('heal');
+}
+
+const uiLangEl = document.getElementById('uiLang');
+chrome.storage.local.get({ uiLang: 'ru' }, (v) => applyUiLang(v.uiLang || 'ru'));
+if (uiLangEl) uiLangEl.addEventListener('change', () => {
+  chrome.storage.local.set({ uiLang: uiLangEl.value });
+  applyUiLang(uiLangEl.value);
+});
 const statusEl = document.getElementById('status');
 const testBtn = document.getElementById('testBtn');
 const openBtn = document.getElementById('openBtn');
@@ -75,12 +229,12 @@ function fillVoices(selected) {
   ttsVoiceEl.innerHTML = '';
   const auto = document.createElement('option');
   auto.value = '';
-  auto.textContent = 'Авто (по языку)';
+  auto.textContent = t('voice_auto');
   ttsVoiceEl.appendChild(auto);
   for (const v of voices) {
     const o = document.createElement('option');
     o.value = v.name;
-    o.textContent = `${v.name} — ${v.lang}${v.localService === false ? ' (сеть)' : ''}${v.default ? ' ★' : ''}`;
+    o.textContent = `${v.name} — ${v.lang}${v.localService === false ? t('remoteVoice') : ''}${v.default ? ' ★' : ''}`;
     ttsVoiceEl.appendChild(o);
   }
   ttsVoiceEl.value = cur || '';
@@ -110,11 +264,11 @@ async function fillServerVoices(selected) {
     const res = await fetch(`${STT_SERVER}/voices`, { headers: authHeaders() });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const info = await res.json();
-    const items = [{ value: '', label: `По умолчанию (${info.default || 'на сервере'})` }];
+    const items = [{ value: '', label: t('serverVoice_default', { def: info.default || t('onServer') }) }];
     for (const name of info.voices || []) items.push({ value: name, label: name });
     setOpts(items, false);
   } catch {
-    setOpts([{ value: '', label: 'Сервер недоступен (проверьте /health)' }], true);
+    setOpts([{ value: '', label: t('serverVoice_down') }], true);
   }
 }
 
@@ -153,18 +307,18 @@ const ttsTestBtn = document.getElementById('ttsTestBtn');
 ttsTestBtn.addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id) throw new Error('нет активной вкладки');
+    if (!tab || !tab.id) throw new Error(t('noTab'));
     const res = await chrome.tabs.sendMessage(tab.id, { type: 'ocv-tts-test' });
     if (res && res.ok) {
-      statusEl.textContent = '🔊 Тест отправлен — должна звучать фраза';
+      statusEl.textContent = t('testSent');
       statusEl.className = 'status ok';
     } else {
-      statusEl.textContent = '⚠️ Content-скрипт не ответил';
+      statusEl.textContent = t('noContentScript');
       statusEl.className = 'status error';
     }
     setTimeout(refreshTtsStatus, 300);
   } catch (err) {
-    statusEl.textContent = '⚠️ Откройте страницу OpenCode и обновите её (F5)';
+    statusEl.textContent = t('openPage');
     statusEl.className = 'status error';
   }
 });
@@ -175,16 +329,16 @@ async function refreshTtsStatus() {
   if (!el) return;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id) { el.textContent = 'нет активной вкладки'; return; }
+    if (!tab || !tab.id) { el.textContent = t('noTab'); return; }
     const s = await chrome.tabs.sendMessage(tab.id, { type: 'ocv-tts-status' });
-    if (!s || !s.ok) { el.textContent = 'content-скрипт не отвечает (обновите страницу F5)'; return; }
+    if (!s || !s.ok) { el.textContent = t('noStatus'); return; }
     el.textContent =
       `gate:${s.gateOk} sse:${s.sourceState} events:${s.events} fin:${s.finalized} rows:${s.rows} voices:${s.voices}\n` +
       `last:${s.lastType || '-'} sid:${(s.lastSid || '').slice(-8)}\n` +
       (s.lastSkip ? `skip:${s.lastSkip}\n` : '') +
       ((s.logTail && s.logTail.length) ? s.logTail.slice(-5).join('\n') : '');
   } catch (e) {
-    el.textContent = 'статус недоступен (обновите страницу F5)';
+    el.textContent = t('statusNA');
   }
 }
 refreshTtsStatus();
@@ -193,7 +347,7 @@ beepTestBtn.addEventListener('click', async () => {
   try {
     await fetch(`${STT_SERVER}/beep?freq=880`, { headers: authHeaders() });
   } catch {
-    statusEl.textContent = `❌ STT сервер недоступен`;
+    statusEl.textContent = t('beepDown');
     statusEl.className = 'status error';
   }
 });
@@ -204,12 +358,12 @@ async function checkServer() {
     if (res.ok) {
       let info = {};
       try { info = await res.json(); } catch {}
-      statusEl.textContent = `✅ STT сервер v${info.version || '?'} · ${info.backend || '?'}`;
+      statusEl.textContent = t('statusOk', { ver: info.version || '?', backend: info.backend || '?' });
       statusEl.className = 'status ok';
       const vEl = document.getElementById('versions');
       if (vEl) {
         const extV = chrome.runtime.getManifest().version;
-        vEl.textContent = `Расширение v${extV} · сервер v${info.version || '?'} (${info.backend || '?'}/${info.device || '?'})`;
+        vEl.textContent = t('versions', { ext: extV, ver: info.version || '?', backend: info.backend || '?', device: info.device || '?' });
       }
       testBtn.disabled = false;
     } else {
@@ -217,18 +371,18 @@ async function checkServer() {
     }
   } catch (err) {
     if (healing) {
-      statusEl.textContent = '⏳ Жду сервер…';
+      statusEl.textContent = t('statusWait');
       statusEl.className = 'status';
       return;
     }
-    statusEl.textContent = `❌ STT сервер недоступен: ${err.message}`;
+    statusEl.textContent = t('statusDown', { err: err.message });
     statusEl.className = 'status error';
     testBtn.disabled = true;
   }
 }
 
 testBtn.addEventListener('click', async () => {
-  testBtn.textContent = 'Тестирование...';
+  testBtn.textContent = t('sttTesting');
   testBtn.disabled = true;
 
   try {
@@ -248,13 +402,13 @@ testBtn.addEventListener('click', async () => {
     });
 
     const result = await res.json();
-    statusEl.textContent = `✅ Тест OK: "${result.text || '(пусто)'}"`;
+    statusEl.textContent = t('testOk', { text: result.text || t('emptyResp') });
     statusEl.className = 'status ok';
   } catch (err) {
-    statusEl.textContent = `❌ Ошибка теста: ${err.message}`;
+    statusEl.textContent = t('testErr', { err: err.message });
     statusEl.className = 'status error';
   } finally {
-    testBtn.textContent = 'Тест STT сервера';
+    testBtn.textContent = t('sttTest');
     testBtn.disabled = false;
   }
 });
@@ -276,24 +430,24 @@ async function waitForServer(timeoutMs) {
       const res = await fetch(`${STT_SERVER}/health`, { headers: authHeaders() });
       if (res.ok) {
         const info = await res.json().catch(() => ({}));
-        statusEl.textContent = `✅ Сервер перезапущен · v${info.version || '?'} · ${info.backend || '?'}`;
+        statusEl.textContent = t('statusRestarted', { ver: info.version || '?', backend: info.backend || '?' });
         statusEl.className = 'status ok';
         testBtn.disabled = false;
         return true;
       }
     } catch {}
-    statusEl.textContent = `⏳ Жду сервер… ${Math.round((Date.now() - started) / 1000)} с`;
+    statusEl.textContent = t('statusWaitSec', { sec: Math.round((Date.now() - started) / 1000) });
     statusEl.className = 'status';
   }
-  statusEl.textContent = '❌ Сервер не поднялся за отведённое время — запустите doctor.sh --fix (или ./setup.sh)';
+  statusEl.textContent = t('statusRestartFail');
   statusEl.className = 'status error';
   return false;
 }
 
 healBtn.addEventListener('click', async () => {
   healBtn.disabled = true;
-  healBtn.textContent = '🔧 Восстанавливаю…';
-  statusEl.textContent = '🔧 Перезапускаю STT-сервер…';
+  healBtn.textContent = t('healing');
+  statusEl.textContent = t('healingServer');
   statusEl.className = 'status';
   healing = true;
   try {
@@ -304,7 +458,7 @@ healBtn.addEventListener('click', async () => {
   await waitForServer(60000);
   healing = false;
   healBtn.disabled = false;
-  healBtn.textContent = '🔧 Восстановить сервер';
+  healBtn.textContent = t('heal');
 });
 
 function bufferToWav(buffer) {

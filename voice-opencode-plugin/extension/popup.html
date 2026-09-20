@@ -20,76 +20,81 @@
 </head>
 <body>
   <h3>🎤 OpenCode Voice</h3>
-  <div id="status" class="status">Проверка...</div>
-  <label class="toggle"><input type="checkbox" id="beeps"> Звуковые сигналы</label>
-  <label class="toggle" style="display:block">Комбинация (удержание)
+  <label class="toggle" style="display:block"><span data-i18n="uiLangLabel">Язык интерфейса</span>
+    <select id="uiLang"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="ru">Русский</option>
+      <option value="en">English</option>
+    </select>
+  </label>
+  <div id="status" class="status" data-i18n="checking">Проверка...</div>
+  <label class="toggle"><input type="checkbox" id="beeps"> <span data-i18n="beeps">Звуковые сигналы</span></label>
+  <label class="toggle" style="display:block"><span data-i18n="hotkeyLabel">Комбинация (удержание)</span>
     <select id="hotkey"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-      <option value="alt+z">Alt+Z (по умолчанию)</option>
+      <option value="alt+z" data-i18n="hk_alt_z">Alt+Z (по умолчанию)</option>
       <option value="ctrl+shift+z">Ctrl+Shift+Z</option>
       <option value="alt+q">Alt+Q</option>
       <option value="f9">F9</option>
     </select>
   </label>
-  <label class="toggle"><input type="checkbox" id="sendHotkey"> Alt+X — запись и сразу отправка</label>
+  <label class="toggle"><input type="checkbox" id="sendHotkey"> <span data-i18n="sendHotkey">Alt+X — запись и сразу отправка</span></label>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0">
-  <label class="toggle"><input type="checkbox" id="tts"> 🔊 Озвучивать ответы ассистента</label>
-  <label class="toggle" style="display:block">Движок озвучки
+  <label class="toggle"><input type="checkbox" id="tts"> <span data-i18n="tts">🔊 Озвучивать ответы ассистента</span></label>
+  <label class="toggle" style="display:block"><span data-i18n="ttsEngineLabel">Движок озвучки</span>
     <select id="ttsEngine"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-      <option value="browser">Браузер (Web Speech)</option>
-      <option value="server">Сервер (Piper; нужен OPENCODE_VOICE_TTS=1)</option>
+      <option value="browser" data-i18n="eng_browser">Браузер (Web Speech)</option>
+      <option value="server" data-i18n="eng_server">Сервер (Piper; нужен OPENCODE_VOICE_TTS=1)</option>
     </select>
   </label>
-  <label class="toggle" style="display:block">Режим озвучки
+  <label class="toggle" style="display:block"><span data-i18n="ttsModeLabel">Режим озвучки</span>
     <select id="ttsMode"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-      <option value="brief">Кратко (первые предложения)</option>
-      <option value="full">Полностью</option>
+      <option value="brief" data-i18n="mode_brief">Кратко (первые предложения)</option>
+      <option value="full" data-i18n="mode_full">Полностью</option>
     </select>
   </label>
-  <label class="toggle" style="display:block">Язык озвучки
+  <label class="toggle" style="display:block"><span data-i18n="ttsLangLabel">Язык озвучки</span>
     <select id="ttsLang"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-      <option value="auto">Авто (по тексту)</option>
-      <option value="ru-RU">Русский</option>
+      <option value="auto" data-i18n="lang_auto">Авто (по тексту)</option>
+      <option value="ru-RU" data-i18n="lang_ru">Русский</option>
       <option value="en-US">English</option>
       <option value="zh-CN">中文</option>
     </select>
   </label>
-  <label class="toggle" style="display:block">Голос
+  <label class="toggle" style="display:block"><span data-i18n="voiceLabel">Голос</span>
     <select id="ttsVoice"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
       <option value="">Авто (по языку)</option>
     </select>
   </label>
-  <label class="toggle" style="display:block">Голос сервера (Piper)
+  <label class="toggle" style="display:block"><span data-i18n="serverVoiceLabel">Голос сервера (Piper)</span>
     <select id="ttsServerVoice"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
       <option value="">По умолчанию (на сервере)</option>
     </select>
   </label>
-  <label class="toggle"><input type="checkbox" id="ttsLocalOnly"> Только локальные голоса</label>
-  <label class="toggle"><input type="checkbox" id="ttsDebug"> Лог в консоль (отладка)</label>
-  <label class="toggle" style="display:block">Скорость: <span id="ttsRateVal">1.0</span>
+  <label class="toggle"><input type="checkbox" id="ttsLocalOnly"> <span data-i18n="localOnly">Только локальные голоса</span></label>
+  <label class="toggle"><input type="checkbox" id="ttsDebug"> <span data-i18n="debug">Лог в консоль (отладка)</span></label>
+  <label class="toggle" style="display:block"><span data-i18n="speed">Скорость:</span> <span id="ttsRateVal">1.0</span>
     <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" style="width:100%">
   </label>
   <div id="ttsStatus"
     style="font-size:11px;color:#6b7280;white-space:pre-wrap;margin-top:6px;line-height:1.35"></div>
-  <label class="toggle" style="display:block">Токен доступа
+  <label class="toggle" style="display:block"><span data-i18n="tokenLabel">Токен доступа</span>
     <input type="password" id="token" placeholder="OPENCODE_VOICE_TOKEN (необязательно)"
+      data-i18n-ph="tokenPh"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
   </label>
-  <button id="beepTestBtn" class="btn secondary">🔔 Проверить звук</button>
-  <button id="ttsTestBtn" class="btn secondary">🔊 Тест озвучки</button>
-  <button id="testBtn" class="btn primary" disabled>Тест STT сервера</button>
-  <button id="healBtn" class="btn secondary">🔧 Восстановить сервер</button>
-  <button id="openBtn" class="btn secondary">Открыть настройки</button>
+  <button id="beepTestBtn" class="btn secondary" data-i18n="beepTest">🔔 Проверить звук</button>
+  <button id="ttsTestBtn" class="btn secondary" data-i18n="ttsTest">🔊 Тест озвучки</button>
+  <button id="testBtn" class="btn primary" disabled data-i18n="sttTest">Тест STT сервера</button>
+  <button id="healBtn" class="btn secondary" data-i18n="heal">🔧 Восстановить сервер</button>
+  <button id="openBtn" class="btn secondary" data-i18n="openSettings">Открыть настройки</button>
   <div class="info" id="versions"></div>
-  <div class="info">
-    Работает на <code>http://127.0.0.1:8765</code> (локальный STT-сервер).
-    Установка и запуск — <code>./setup.sh</code>, диагностика — <code>doctor.sh</code>.
-  </div>
+  <div class="info" data-i18n="infoFooter">Работает на http://127.0.0.1:8765 (локальный STT-сервер). Установка и запуск — ./setup.sh, диагностика — doctor.sh.</div>
   <script src="popup.js"></script>
 </body>
 </html>

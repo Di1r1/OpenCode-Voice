@@ -29,6 +29,19 @@ The Chrome extension is versioned independently (`voice-opencode-plugin/extensio
   - Popup: toggle, engine (browser/server), mode, language, voice, local-only, speed, debug log.
   - Tests: `pytest` 65 (+12 on `/speak`, +3 on `/voices`), `npm test` 74.
 
+### Added
+- **`setup.sh --all` (one-command install):** pip deps + TTS (Piper + voices) + plugin
+  config write (backup) + `$OPENCODE_VOICE_HOME/env.sh` (`OPENCODE_VOICE_TTS=1`, Piper
+  binary, voices dir — survives shell/machine restarts via `source`) + `doctor.sh`,
+  no questions. GPU build only when `nvcc` is visible (explicit `--gpu`/`--cpu` win).
+  The "what's next" summary now also reminds to Reload the extension + F5 the tab.
+- **English TTS voice out of the box:** `setup.sh --tts` / `--all` now also download
+  `en_US-lessac-medium` (override via `OPENCODE_VOICE_TTS_VOICES_EN`, e.g. `"lessac ryan"`),
+  so English speakers have a server voice in the popup dropdown without extra steps.
+- **Popup UI language (RU/EN):** the extension popup has an interface-language switch
+  (persisted in `chrome.storage.local.uiLang`, default RU). All static labels and popup
+  statuses are localized; content-script toasts stay Russian for now. Extension `1.0.34`.
+
 ### Fixed
 - **Server TTS voices are now visible:** new read-only `GET /voices`
   (`{status, engine, default, voices, enabled, available}`; token-protected like the
