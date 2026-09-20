@@ -10,18 +10,21 @@
 #   ./setup.sh                     # CPU: зависимости + проверки
 #   ./setup.sh --all               # мастер одной команды: всё разом (pip, TTS, конфиг, env, doctor)
 #   ./setup.sh --gpu               # + собрать whisper.cpp (CUDA) + модель
-#   ./setup.sh --tts               # + скачать Piper и голос (серверная озвучка, POST /speak)
+#   ./setup.sh --cpu               # принудительно CPU-путь (без сборки whisper.cpp)
+#   ./setup.sh --tts               # + скачать Piper и голоса (серверная озвучка, POST /speak)
 #   ./setup.sh --model-size small  # размер ggml-модели для --gpu (tiny|base|small|medium|large-v3)
 #   ./setup.sh --check             # только проверить окружение и показать план (ничего не менять)
-#   ./setup.sh --configure         # показать, а с флагом --write-config — вписать пути в ~/.config/opencode/*.json (с бэкапом)
-#   ./setup.sh --yes               # не задавать вопросов
+#   ./setup.sh --configure         # показать строки для конфига OpenCode
+#   ./setup.sh --write-config      # то же + вписать пути в ~/.config/opencode/*.json (с бэкапом)
+#   ./setup.sh --yes, -y           # не задавать вопросов
 #   ./setup.sh --no-pip            # не ставить Python-пакеты
+#   ./setup.sh --no-sync           # не генерировать entry-файлы плагина
 #
 # Переменные: OPENCODE_VOICE_HOME (по умолчанию ~/.local/share/opencode-voice),
 #             OPENCODE_VOICE_WHISPER_DIR (по умолчанию $OPENCODE_VOICE_HOME/whisper),
 #             CUDA_HOME/CUDA_PATH (если CUDA Toolkit в нестандартном месте);
-#             OPENCODE_VOICE_TTS_HOME/VOICES_DIR/VOICE (для --tts; голос по умолчанию ru_RU-irina-medium;
-#             английский — OPENCODE_VOICE_TTS_VOICES_EN, по умолчанию lessac).
+#             OPENCODE_VOICE_TTS_HOME/VOICES_DIR (для --tts),
+#             OPENCODE_VOICE_TTS_VOICES(_EN) (наборы голосов RU/EN).
 
 set -euo pipefail
 
@@ -45,7 +48,6 @@ WHISPER_DIR="${OPENCODE_VOICE_WHISPER_DIR:-$HOME_DIR/whisper}"
 TTS_DIR="${OPENCODE_VOICE_TTS_HOME:-$HOME_DIR/tts}"
 TTS_PIPER_DIR="$TTS_DIR/piper"
 TTS_VOICES_DIR="${OPENCODE_VOICE_TTS_VOICES_DIR:-$TTS_DIR/voices}"
-TTS_VOICE="${OPENCODE_VOICE_TTS_VOICE:-ru_RU-irina-medium}"
 OPENCODE_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 
 C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_OFF=$'\033[0m'
@@ -55,7 +57,8 @@ err()  { printf '%s✗%s %s\n' "$C_ERR" "$C_OFF" "$*" >&2; }
 info() { printf '%s·%s %s\n' "$C_DIM" "$C_OFF" "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-for arg in "$@"; do
+while [ $# -gt 0 ]; do
+  arg="$1"; shift
   case "$arg" in
     --gpu) MODE_GPU=1; GPU_EXPLICIT=1 ;;
     --cpu) MODE_GPU=0; GPU_EXPLICIT=1 ;;
@@ -67,19 +70,12 @@ for arg in "$@"; do
     --no-sync) DO_SYNC=0 ;;
     --configure) CONFIGURE=1 ;;
     --write-config) CONFIGURE=1; WRITE_CONFIG=1 ;;
-    --model-size) shift; MODEL_SIZE="${1:?--model-size требует значение}" ;;
+    --model-size) MODEL_SIZE="${1:?--model-size требует значение}"; shift ;;
     --model-size=*) MODEL_SIZE="${arg#*=}" ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) err "неизвестный флаг: $arg (см. --help)"; exit 2 ;;
   esac
 done
-
-ask() {
-  # ask "вопрос" -> 0 (да) / 1 (нет)
-  [ "$ASSUME_YES" = "1" ] && return 0
-  read -r -p "$1 [y/N] " a || true
-  case "${a:-n}" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
-}
 
 in_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
 
@@ -96,7 +92,7 @@ echo "OpenCode Voice — установка"
 info "репозиторий:  $REPO"
 info "модель/каталог: $WHISPER_DIR (размер: $MODEL_SIZE)"
 [ "$MODE_GPU" = "1" ] && info "режим: GPU (whisper.cpp + CUDA)" || info "режим: CPU (faster-whisper)"
-[ "$DO_TTS" = "1" ] && info "TTS: Piper + голос $TTS_VOICE -> $TTS_DIR"
+[ "$DO_TTS" = "1" ] && info "TTS: Piper + голоса RU/EN -> $TTS_DIR"
 [ "$DO_ALL" = "1" ] && info "мастер: всё разом, конфиг пишется, env — в $HOME_DIR/env.sh"
 echo
 
@@ -175,7 +171,7 @@ fi
 echo
 echo "== Python-зависимости =="
 REQ="$HERE/stt-server/requirements.txt"
-if [ "$DO_PIP" = "1" ] && [ "$CHECK_ONLY" != "1" ]; then
+if [ "$DO_PIP" = "1" ]; then
   if [ -f "$REQ" ]; then
     if python3 -m pip --version >/dev/null 2>&1; then
       info "pip install -r $REQ (может занять пару минут)"
@@ -346,7 +342,7 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Entry-файлы плагина (sync) + проверка
 # ---------------------------------------------------------------------------
-if [ "$DO_SYNC" = "1" ] && [ "$CHECK_ONLY" != "1" ] && [ -x "$HERE/sync-plugin.sh" ]; then
+if [ "$DO_SYNC" = "1" ] && [ -x "$HERE/sync-plugin.sh" ]; then
   echo
   echo "== Плагин =="
   if bash "$HERE/sync-plugin.sh" >/dev/null 2>&1; then ok "entry-файлы сгенерированы ($HERE/.opencode/)"; else

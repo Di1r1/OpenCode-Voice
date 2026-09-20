@@ -782,9 +782,9 @@ def _strip_non_speech(text: str) -> str:
 _CODE_PLACEHOLDER = "…код…"
 _FENCE_RE = re.compile(r"```[\s\S]*?```")
 _HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
-_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_IMAGE_RE = re.compile(r"!\[(?:[^\]]*)\]\([^)]*\)")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
-_AUTOLINK_RE = re.compile(r"<(https?://[^>\s]+)>")
+_AUTOLINK_RE = re.compile(r"<(?:https?://[^>\s]+)>")
 _URL_RE = re.compile(r"https?://[^\s)]+")
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
 _HR_RE = re.compile(r"^\s{0,3}([-*_])(?:\s*\1){2,}\s*$", re.MULTILINE)

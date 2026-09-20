@@ -23,6 +23,7 @@ const FALLBACK_SPEC = {
   whisperCppExtraFlags: ["-mc", "0", "-sns"],
   defaultModelByDevice: { gpu: "medium", cpu: "small" },
   silenceRms: 80,
+  silencePeak: 700,
 }
 
 interface Spec {
@@ -30,6 +31,7 @@ interface Spec {
   gpu: string
   cpu: string
   silenceRms: number
+  silencePeak: number
 }
 
 function loadSpec(): Spec {
@@ -37,6 +39,7 @@ function loadSpec(): Spec {
     const url = new URL("../../shared/stt-spec.json", import.meta.url)
     const raw = JSON.parse(readFileSync(fileURLToPath(url), "utf8"))
     const rms = Number(raw?.silence?.rms)
+    const peak = Number(raw?.silence?.peak)
     return {
       flags: Array.isArray(raw?.whisperCppExtraFlags) && raw.whisperCppExtraFlags.length
         ? raw.whisperCppExtraFlags.map(String)
@@ -44,6 +47,7 @@ function loadSpec(): Spec {
       gpu: raw?.defaultModelByDevice?.gpu || FALLBACK_SPEC.defaultModelByDevice.gpu,
       cpu: raw?.defaultModelByDevice?.cpu || FALLBACK_SPEC.defaultModelByDevice.cpu,
       silenceRms: Number.isFinite(rms) && rms > 0 ? rms : FALLBACK_SPEC.silenceRms,
+      silencePeak: Number.isFinite(peak) && peak > 0 ? peak : FALLBACK_SPEC.silencePeak,
     }
   } catch {
     return {
@@ -51,6 +55,7 @@ function loadSpec(): Spec {
       gpu: FALLBACK_SPEC.defaultModelByDevice.gpu,
       cpu: FALLBACK_SPEC.defaultModelByDevice.cpu,
       silenceRms: FALLBACK_SPEC.silenceRms,
+      silencePeak: FALLBACK_SPEC.silencePeak,
     }
   }
 }
@@ -67,6 +72,12 @@ export const CPU_MODEL_SIZE = SPEC.cpu
 export function silenceRms(env: Env = process.env): number {
   const n = Number(env.OPENCODE_VOICE_SILENCE_RMS)
   return Number.isFinite(n) && n > 0 ? n : SPEC.silenceRms
+}
+
+/** Порог тишины peak: env OPENCODE_VOICE_SILENCE_PEAK важнее значения из спека. */
+export function silencePeak(env: Env = process.env): number {
+  const n = Number(env.OPENCODE_VOICE_SILENCE_PEAK)
+  return Number.isFinite(n) && n > 0 ? n : SPEC.silencePeak
 }
 
 export function whisperHome(env: Env = process.env, home: string = os.homedir()): string {

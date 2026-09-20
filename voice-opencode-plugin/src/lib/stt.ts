@@ -12,7 +12,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { config } from "./config.ts"
-import { CPU_MODEL_SIZE, GPU_MODEL_SIZE, WHISPER_CPP_EXTRA_FLAGS, defaultModelSize, hasCuda, ldLibraryPath, whisperBin, whisperModelPath } from "./whisper.ts"
+import { CPU_MODEL_SIZE, GPU_MODEL_SIZE, WHISPER_CPP_EXTRA_FLAGS, defaultModelSize, hasCuda, ldLibraryPath, silencePeak, silenceRms, whisperBin, whisperModelPath } from "./whisper.ts"
 
 // Диагностика: какой бэкенд реально использовался (`/tmp/opencode/voice-stt.log`).
 function note(backend: string, info: string): void {
@@ -27,8 +27,7 @@ function note(backend: string, info: string): void {
 }
 
 // Порог тишины: на тишине/шуме Whisper галлюцинирует, поэтому не тратим на неё проход.
-const SILENCE_PEAK = Number(process.env.OPENCODE_VOICE_SILENCE_PEAK || 700)
-const SILENCE_RMS = Number(process.env.OPENCODE_VOICE_SILENCE_RMS || 80)
+// Канонические silencePeak()/silenceRms() (env + shared/stt-spec.json).
 
 function wavInfo(file: string): { peak: number; rms: number; durSec: number } | null {
   try {
@@ -72,14 +71,10 @@ function wavInfo(file: string): { peak: number; rms: number; durSec: number } | 
   }
 }
 
-function wavLevels(file: string): { peak: number; rms: number } | null {
-  return wavInfo(file)
-}
-
 function isSilentWav(file: string): boolean {
-  const lv = wavLevels(file)
+  const lv = wavInfo(file)
   if (!lv) return false
-  const silent = lv.peak < SILENCE_PEAK && lv.rms < SILENCE_RMS
+  const silent = lv.peak < silencePeak() && lv.rms < silenceRms()
   note("levels", `peak=${lv.peak.toFixed(0)} rms=${lv.rms.toFixed(0)} silent=${silent}`)
   return silent
 }
@@ -110,15 +105,6 @@ export function logRecognized(source: string, text: string, language: string, fi
 
 // Пост-обработка текста вынесена в ./text (тестируется напрямую).
 export { stripNonSpeech } from "./text.ts"
-
-/**
- * Есть ли CUDA-драйвер/рантайм. Проверяем по библиотеке (libcuda/libcudart), а
- * не по бинарнику whisper-cli: сборка с CUDA есть, а GPU может не быть — тогда
- * whisper.cpp не запустится и надо уходить на CPU.
- */
-export function cudaAvailable(): boolean {
-  return hasCuda()
-}
 
 export interface TranscribeOptions {
   backend: "local" | "api"
@@ -196,7 +182,10 @@ async function transcribeLocal(opts: { file: string; language: string; device?: 
   if (["whispercpp", "gpu", "cuda"].includes(pref)) device = "gpu"
   if (!["auto", "gpu", "cpu"].includes(device)) device = "auto"
 
-  const cuda = cudaAvailable()
+  // Есть ли CUDA-драйвер/рантайм — по библиотеке (libcuda/libcudart), а не по
+  // бинарнику whisper-cli: сборка с CUDA есть, а GPU может не быть — тогда
+  // whisper.cpp не запустится и надо уходить на CPU.
+  const cuda = hasCuda()
   const size = defaultModelSize(process.env, cuda)
   const bin = whisperBin()
   const sizeModel = whisperModelPath(size)

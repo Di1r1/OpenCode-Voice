@@ -72,9 +72,9 @@ export interface CleanForSpeechOptions {
 const CODE_PLACEHOLDER = "…код…"
 const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g
 const FENCE_RE = /```[\s\S]*?```/g
-const IMAGE_RE = /!\[([^\]]*)\]\([^)]*\)/g
+const IMAGE_RE = /!\[(?:[^\]]*)\]\([^)]*\)/g
 const LINK_RE = /\[([^\]]+)\]\([^)]*\)/g
-const AUTOLINK_RE = /<(https?:\/\/[^>\s]+)>/g
+const AUTOLINK_RE = /<(?:https?:\/\/[^>\s]+)>/g
 const URL_RE = /https?:\/\/[^\s)]+/g
 const HEADING_RE = /^\s{0,3}#{1,6}\s+/gm
 const HR_RE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/gm

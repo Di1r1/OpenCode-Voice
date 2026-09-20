@@ -24,9 +24,6 @@ export const DEFAULTS = {
 }
 
 export const config = {
-  sttBackend: (process.env.OPENCODE_VOICE_BACKEND || DEFAULTS.sttBackend) as "local" | "api",
-  sttLanguage: (process.env.OPENCODE_VOICE_LANGUAGE || DEFAULTS.sttLanguage) as string,
-  sttDevice: (process.env.OPENCODE_VOICE_DEVICE || DEFAULTS.sttDevice) as string,
   whisperModel: process.env.OPENCODE_VOICE_MODEL || DEFAULTS.whisperModel,
   openaiApiKey: process.env.OPENAI_API_KEY || "",
 }

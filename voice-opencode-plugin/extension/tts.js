@@ -16,9 +16,9 @@
   var CODE_PLACEHOLDER = "…код…";
   var HTML_COMMENT_RE = /<!--[\s\S]*?-->/g;
   var FENCE_RE = /```[\s\S]*?```/g;
-  var IMAGE_RE = /!\[([^\]]*)\]\([^)]*\)/g;
+  var IMAGE_RE = /!\[(?:[^\]]*)\]\([^)]*\)/g;
   var LINK_RE = /\[([^\]]+)\]\([^)]*\)/g;
-  var AUTOLINK_RE = /<(https?:\/\/[^>\s]+)>/g;
+  var AUTOLINK_RE = /<(?:https?:\/\/[^>\s]+)>/g;
   var URL_RE = /https?:\/\/[^\s)]+/g;
   var HEADING_RE = /^\s{0,3}#{1,6}\s+/gm;
   var HR_RE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/gm;
@@ -288,7 +288,6 @@
         var keys = Object.keys(messages);
         if (keys.length) maybeFinalize(keys[keys.length - 1], true);
       }
-      void sessionID;
     }
 
     function assemble(m) {

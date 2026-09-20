@@ -9,6 +9,7 @@ import {
   defaultModelSize,
   hasCuda,
   ldLibraryPath,
+  silencePeak,
   silenceRms,
   whisperBin,
   whisperDir,
@@ -98,4 +99,13 @@ test("silenceRms comes from the shared spec and env wins", () => {
   // мусор/ноль игнорируются -> значение из спека
   assert.equal(silenceRms({ OPENCODE_VOICE_SILENCE_RMS: "abc" }), 80)
   assert.equal(silenceRms({ OPENCODE_VOICE_SILENCE_RMS: "0" }), 80)
+})
+
+test("silencePeak comes from the shared spec and env wins", () => {
+  // shared/stt-spec.json silence.peak = 700
+  assert.equal(silencePeak({}), 700)
+  assert.equal(silencePeak({ OPENCODE_VOICE_SILENCE_PEAK: "500" }), 500)
+  // мусор/ноль игнорируются -> значение из спека
+  assert.equal(silencePeak({ OPENCODE_VOICE_SILENCE_PEAK: "abc" }), 700)
+  assert.equal(silencePeak({ OPENCODE_VOICE_SILENCE_PEAK: "0" }), 700)
 })

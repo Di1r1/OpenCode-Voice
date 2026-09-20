@@ -215,16 +215,6 @@ async function stopGracefully(pid: number): Promise<void> {
   }
 }
 
-/** Ждёт завершения рекордера; по истечении maxMs — мягко останавливает. */
-export async function waitPushToTalkEnd(session: PttSession, maxMs: number): Promise<void> {
-  const start = Date.now()
-  while (Date.now() - start < maxMs) {
-    if (!isAlive(session.pid)) return
-    await sleep(150)
-  }
-  await stopGracefully(session.pid)
-}
-
 export interface AutoStopOptions {
   /** Жёсткий предел записанного аудио, с. */
   maxAudioSeconds?: number

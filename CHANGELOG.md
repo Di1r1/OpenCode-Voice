@@ -10,6 +10,19 @@ Version in code: `PLUGIN_VERSION` (`voice-opencode-plugin/src/lib/config.ts`), `
 (`voice-opencode-plugin/stt-server/stt_server.py`), `package.json` and `/health` (field `version`).
 The Chrome extension is versioned independently (`voice-opencode-plugin/extension/manifest.json`).
 
+## [Unreleased]
+
+### Fixed
+- **`setup.sh --model-size <size>` (space form) was dead:** the `for arg in "$@"`
+  loop ignored `shift`, so only `--model-size=*` worked and the space form died
+  with `exit 2`. The parser is now a `while` loop; both forms work.
+- **Dead code removed:** `setup.sh ask()`, `waitPushToTalkEnd()`, unread
+  `config.sttBackend/Language/Device`, `wavLevels`/`cudaAvailable` wrappers,
+  `void sessionID`, always-true `CHECK_ONLY` guards, misleading `TTS_VOICE` var;
+  silence thresholds are now canonical `silenceRms()`/`silencePeak()` (env +
+  `shared/stt-spec.json`); non-capturing groups in the TS/Python/browser
+  `IMAGE_RE`/`AUTOLINK_RE` (output parity unchanged).
+
 ## [0.4.0] - 2026-09-20
 
 ### Added
