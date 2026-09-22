@@ -149,6 +149,10 @@ if [ "$CHECK_ONLY" = "0" ] && have apt-get 2>/dev/null && have dpkg 2>/dev/null;
     fi
   fi
 
+  if ! have ffmpeg; then
+    APT_INSTALL+=("ffmpeg")
+  fi
+
   if [ ${#APT_INSTALL[@]} -gt 0 ]; then
     echo
     info "доустанавливаю системные пакеты: ${APT_INSTALL[*]}..."
