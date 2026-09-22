@@ -18,7 +18,7 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 | `voice-opencode-plugin/doctor.sh` | Diagnostics and repair for the button/extension path (server, CORS, stuck recording, microphone) |
 | `voice-opencode-plugin/fix-mic.sh` | Recreates the WSLg audio channel when the microphone dies (WSL2) |
 | `voice-opencode-plugin/sync-plugin.sh` | Generates the local plugin/TUI entry points that OpenCode loads |
-| `voice-opencode-plugin/setup.sh` | One-command install: checks deps, server packages, optional GPU build, entry points, config hints |
+| `voice-opencode-plugin/setup.sh` | Установка: проверяет зависимости, ставит системные пакеты (apt), Python-пакеты, опционально GPU build, генерирует entry-файлы плагина и команды, пишет конфиг OpenCode |
 
 ## Requirements
 
@@ -26,6 +26,7 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 - **Node.js 22+ and npm** — for the plugin (and for `npm ci` / typecheck).
 - **Python 3.9+** — for the STT server.
 - System packages: `alsa-utils` (`arecord`), `libasound2-plugins`, `ffmpeg`, `libnotify` (optional).
+- **Автоматическая установка:** `bash setup.sh --yes` доустанавливает `python3-pip`, `python3-venv`, `alsa-utils`, `libasound2-plugins` (WSL2) через `apt-get` перед остальной установкой.
 - **Chrome/Chromium** — for the 🎤 button in the web UI (the TUI works without it).
 - Optional: an NVIDIA GPU with a WSL-capable driver, for `whisper.cpp` + CUDA.
 
@@ -39,13 +40,18 @@ Release history: [CHANGELOG.md](CHANGELOG.md).
 git clone https://github.com/Di1r1/OpenCode-Voice.git
 cd OpenCode-Voice/voice-opencode-plugin
 
-# one command: checks, deps, plugin entry points, config hints, doctor
+# one command: checks, system deps, server packages, plugin entry points, config, doctor
 ./setup.sh                  # CPU: faster-whisper (model downloads on first run)
+./setup.sh --yes            # same, but answers "yes" to all prompts
 ./setup.sh --all            # everything at once: deps, TTS, config write, env file, doctor
 ./setup.sh --gpu            # optional: build whisper.cpp with CUDA + fetch a ggml model
 ```
 
-`setup.sh` checks the environment, installs `stt-server/requirements.txt`, runs `sync-plugin.sh`, then prints the exact `~/.config/opencode/opencode.json` and `tui.json` lines to add (use `--write-config` to patch them with a backup; `--check` prints the plan and changes nothing; `--all` does everything at once and writes `$OPENCODE_VOICE_HOME/env.sh`).
+`setup.sh` проверяет окружение, **доустанавливает системные пакеты** (`python3-pip`, `python3-venv`, `alsa-utils`, `libasound2-plugins` для WSL2), ставит `stt-server/requirements.txt`, запускает `sync-plugin.sh`, копирует `.opencode/commands/voice.md` в проект и пишет конфиг в `~/.config/opencode/opencode.json`.
+
+`--all` включает всё сразу (системные пакеты + TTS + запись конфига + env-файл + doctor). `--yes` — без вопросов. `--write-config` — применяет конфиг автоматически с бэкапом.
+
+При установке через `npm install @di1r1/opencode-voice` пакет включает `.opencode/commands/` и `setup.sh`; после `npm install` запустите `bash voice-opencode-plugin/setup.sh --yes`.
 
 Manual equivalent:
 
@@ -132,15 +138,24 @@ A tarball built with `npm pack` has the same layout.
 Then point OpenCode at the generated entry point. The plugin and the TUI hotkey are registered as **file URLs** in the OpenCode config (this is exactly how it is wired in a working setup):
 
 ```jsonc
-// ~/.config/opencode/opencode.json   (global)  — or ./opencode.json (project)
+// ~/.config/opencode/opencode.json   (global)  — или ./opencode.json (project)
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    // ... your other plugins ...
+    // ... другие плагины ...
     "file:///ABS/PATH/voice-opencode-plugin/.opencode/plugins/index.ts"
-  ]
+  ],
+  "commands": {
+    "voice": {
+      "template": "$ARGUMENTS",
+      "description": "Voice: /voice — запись; /voice help; backend [local|api]; lang [ru|en/auto]; device [auto|gpu|cpu]; doctor [--fix]; <file.wav>",
+      "agent": "build"
+    }
+  }
 }
 ```
+
+Команда `voice` также определена как markdown-файл в `.opencode/commands/voice.md` — при установке через `npm install @di1r1/opencode-voice` или `bash setup.sh --yes` она копируется в проект автоматически.
 
 ```jsonc
 // ~/.config/opencode/tui.json   (global) — optional: enables the <leader>v hotkey
