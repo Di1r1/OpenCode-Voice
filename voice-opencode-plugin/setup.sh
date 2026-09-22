@@ -213,8 +213,8 @@ if [ "$DO_PIP" = "1" ]; then
   if [ -f "$REQ" ]; then
     if python3 -m pip --version >/dev/null 2>&1; then
       info "pip install -r $REQ (может занять пару минут)"
-      if python3 -m pip install -r "$REQ"; then ok "Python-пакеты установлены"; else
-        warn "pip install не удался — поставьте вручную: python3 -m pip install -r $REQ"; fi
+      if python3 -m pip install --break-system-packages -r "$REQ"; then ok "Python-пакеты установлены"; else
+        warn "pip install не удался — поставьте вручную: python3 -m pip install --break-system-packages -r $REQ"; fi
     else
       warn "pip недоступен (python3 -m ensurepip --upgrade, либо apt-get install python3-pip)"
     fi
