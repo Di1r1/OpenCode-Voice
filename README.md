@@ -47,7 +47,7 @@ cd OpenCode-Voice/voice-opencode-plugin
 ./setup.sh --gpu            # optional: build whisper.cpp with CUDA + fetch a ggml model
 ```
 
-`setup.sh` проверяет окружение, **доустанавливает системные пакеты** (`python3-pip`, `python3-venv`, `alsa-utils`, `libasound2-plugins` для WSL2), ставит `stt-server/requirements.txt`, запускает `sync-plugin.sh`, копирует `.opencode/commands/voice.md` в проект и пишет конфиг в `~/.config/opencode/opencode.json`.
+`setup.sh` проверяет окружение, **доустанавливает системные пакеты** (`python3-pip`, `python3-venv`, `alsa-utils`, `libasound2-plugins` для WSL2), ставит `stt-server/requirements.txt`, запускает `sync-plugin.sh`, копирует `.opencode/commands/voice.md` в проект и пишет конфиг в `~/.config/opencode/opencode.jsonc`.
 
 `--all` включает всё сразу (системные пакеты + TTS + запись конфига + env-файл + doctor). `--yes` — без вопросов. `--write-config` — применяет конфиг автоматически с бэкапом.
 
@@ -138,7 +138,7 @@ A tarball built with `npm pack` has the same layout.
 Then point OpenCode at the generated entry point. The plugin and the TUI hotkey are registered as **file URLs** in the OpenCode config (this is exactly how it is wired in a working setup):
 
 ```jsonc
-// ~/.config/opencode/opencode.json   (global)  — или ./opencode.json (project)
+// ~/.config/opencode/opencode.jsonc   (global)  — или ./opencode.jsonc (project)
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
