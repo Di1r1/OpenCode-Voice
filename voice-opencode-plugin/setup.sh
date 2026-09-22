@@ -126,6 +126,35 @@ if have arecord; then ok "arecord (alsa-utils)"; else
 fi
 in_wsl && ok "окружение WSL2 (микрофон через WSLg PulseAudio)" || info "не WSL2: задайте OPENCODE_VOICE_SOURCE (pactl get-default-source)"
 
+# ---------------------------------------------------------------------------
+# 1b. Автоустановка системных пакетов (Linux apt-based)
+# ---------------------------------------------------------------------------
+if [ "$CHECK_ONLY" = "0" ] && have apt-get 2>/dev/null && have dpkg 2>/dev/null; then
+  APT_INSTALL=()
+
+  if ! python3 -m pip --version >/dev/null 2>&1; then
+    APT_INSTALL+=("python3-pip" "python3-venv")
+  fi
+
+  if ! have arecord; then
+    if in_wsl; then
+      APT_INSTALL+=("alsa-utils" "libasound2-plugins")
+    else
+      APT_INSTALL+=("alsa-utils")
+    fi
+  fi
+
+  if [ ${#APT_INSTALL[@]} -gt 0 ]; then
+    echo
+    info "доустанавливаю системные пакеты: ${APT_INSTALL[*]}..."
+    if sudo apt-get install -y "${APT_INSTALL[@]}"; then
+      ok "системные пакеты установлены"
+    else
+      warn "apt-get install не удался — установите вручную: sudo apt-get install -y ${APT_INSTALL[*]}"
+    fi
+  fi
+fi
+
 if [ "$MODE_GPU" = "1" ]; then
   echo
   echo "== Проверка GPU-сборки =="
@@ -340,8 +369,17 @@ if [ "$DO_TTS" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Entry-файлы плагина (sync) + проверка
+# 4. Command-файлы + Entry-файлы плагина (sync) + проверка
 # ---------------------------------------------------------------------------
+# Синхронизируем .opencode/commands/ в проект, чтобы OpenCode находил /voice
+COMMANDS_SRC="$HERE/.opencode/commands"
+COMMANDS_DST="$REPO/.opencode/commands"
+if [ -d "$COMMANDS_SRC" ] && [ "$DO_SYNC" = "1" ]; then
+  mkdir -p "$COMMANDS_DST"
+  cp -f "$COMMANDS_SRC"/*.md "$COMMANDS_DST/" 2>/dev/null || true
+  info "команды скопированы -> $COMMANDS_DST"
+fi
+
 if [ "$DO_SYNC" = "1" ] && [ -x "$HERE/sync-plugin.sh" ]; then
   echo
   echo "== Плагин =="
@@ -359,6 +397,13 @@ print_config() {
   cat <<EOF
 Добавьте в ~/.config/opencode/opencode.json:
 
+  "commands": {
+    "voice": {
+      "template": "\$ARGUMENTS",
+      "description": "Voice: /voice — запись; /voice help; backend [local|api]; lang [ru|en/auto]; device [auto|gpu|cpu]; doctor [--fix]; <file.wav>",
+      "agent": "build"
+    }
+  },
   "plugin": [
     ...,
     "file://$PLUGIN_ENTRY"
@@ -400,6 +445,17 @@ if not isinstance(paths, list):
 if skills not in paths:
     paths.append(skills)
 data["skills"] = {**(data.get("skills") or {}), "paths": paths}
+# Добавляем команду voice если её нет
+commands = data.get("commands")
+if not isinstance(commands, dict):
+    commands = {}
+if "voice" not in commands:
+    commands["voice"] = {
+        "template": "$ARGUMENTS",
+        "description": "Voice: /voice — запись; /voice help; backend [local|api]; lang [ru|en/auto]; device [auto|gpu|cpu]; doctor [--fix]; <file.wav>",
+        "agent": "build"
+    }
+    data["commands"] = commands
 os.makedirs(os.path.dirname(cfg), exist_ok=True)
 with open(cfg, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
