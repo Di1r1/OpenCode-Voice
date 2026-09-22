@@ -382,11 +382,11 @@ fi
 # ---------------------------------------------------------------------------
 # Синхронизируем .opencode/commands/ в проект, чтобы OpenCode находил /voice
 COMMANDS_SRC="$HERE/.opencode/commands"
-COMMANDS_DST="$REPO/.opencode/commands"
+COMMANDS_DST="$HERE/.opencode/commands"
 if [ -d "$COMMANDS_SRC" ] && [ "$DO_SYNC" = "1" ]; then
   mkdir -p "$COMMANDS_DST"
   cp -f "$COMMANDS_SRC"/*.md "$COMMANDS_DST/" 2>/dev/null || true
-  info "команды скопированы -> $COMMANDS_DST"
+  info "команды синхронизированы -> $COMMANDS_DST"
 fi
 
 if [ "$DO_SYNC" = "1" ] && [ -x "$HERE/sync-plugin.sh" ]; then
@@ -394,6 +394,15 @@ if [ "$DO_SYNC" = "1" ] && [ -x "$HERE/sync-plugin.sh" ]; then
   echo "== Плагин =="
   if bash "$HERE/sync-plugin.sh" >/dev/null 2>&1; then ok "entry-файлы сгенерированы ($HERE/.opencode/)"; else
     warn "sync-plugin.sh завершился с ошибкой — запустите вручную: bash $HERE/sync-plugin.sh"; fi
+fi
+
+# Копируем .opencode/plugins/index.ts в проект, чтобы OpenCode мог загрузить плагин
+PLUGINS_SRC="$HERE/.opencode/plugins"
+PLUGINS_DST="$HERE/.opencode/plugins"
+if [ -d "$PLUGINS_SRC" ] && [ "$DO_SYNC" = "1" ]; then
+  mkdir -p "$PLUGINS_DST"
+  cp -f "$PLUGINS_SRC"/*.ts "$PLUGINS_DST/" 2>/dev/null || true
+  info "плагин синхронизирован -> $PLUGINS_DST"
 fi
 
 # ---------------------------------------------------------------------------
