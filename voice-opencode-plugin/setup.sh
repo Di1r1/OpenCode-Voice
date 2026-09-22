@@ -88,6 +88,11 @@ if [ "$DO_ALL" = "1" ]; then
   fi
 fi
 
+# --yes без --all: всё без вопросов, включая запись конфига
+if [ "$ASSUME_YES" = "1" ] && [ "$DO_ALL" = "0" ]; then
+  CONFIGURE=1; WRITE_CONFIG=1
+fi
+
 echo "OpenCode Voice — установка"
 info "репозиторий:  $REPO"
 info "модель/каталог: $WHISPER_DIR (размер: $MODEL_SIZE)"
@@ -189,7 +194,7 @@ if [ "$CHECK_ONLY" = "1" ]; then
   if [ "$DO_TTS" = "1" ]; then n=$((n+1)); echo "  $n. записать $HOME_DIR/env.sh (OPENCODE_VOICE_TTS=1, бинарь и каталог голосов)"; fi
   if [ "$WRITE_CONFIG" = "1" ]; then n=$((n+1)); echo "  $n. записать пути плагина в конфиг OpenCode (с бэкапом)"; fi
   if [ "$DO_SYNC" = "1" ]; then n=$((n+1)); echo "  $n. bash voice-opencode-plugin/sync-plugin.sh (сгенерировать entry-файлы)"; fi
-  n=$((n+1)); echo "  $n. показать строки для ~/.config/opencode/opencode.json и tui.json"
+  n=$((n+1)); echo "  $n. показать строки для ~/.config/opencode/opencode.jsonc и tui.json"
   n=$((n+1)); echo "  $n. bash voice-opencode-plugin/doctor.sh"
   exit 0
 fi
@@ -395,7 +400,7 @@ TUI_ENTRY="$HERE/.opencode/tui/voice.ts"
 
 print_config() {
   cat <<EOF
-Добавьте в ~/.config/opencode/opencode.json:
+Добавьте в ~/.config/opencode/opencode.jsonc:
 
   "commands": {
     "voice": {
@@ -424,7 +429,7 @@ if [ "$CONFIGURE" = "1" ]; then
   if [ "$WRITE_CONFIG" != "1" ]; then
     print_config
   else
-    python3 - "$OPENCODE_CONFIG_DIR/opencode.json" "$PLUGIN_ENTRY" "$HERE/.opencode/skills" <<'PY'
+    python3 - "$OPENCODE_CONFIG_DIR/opencode.jsonc" "$PLUGIN_ENTRY" "$HERE/.opencode/skills" <<'PY'
 import json, os, shutil, sys
 cfg, entry, skills = sys.argv[1], sys.argv[2], sys.argv[3]
 plugin_url = "file://" + entry
