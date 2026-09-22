@@ -232,6 +232,7 @@
         if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) { dbg("no chrome.storage"); cb(); return; }
         chrome.storage.local.get(DEFAULTS, function (v) {
           settings = Object.assign({}, DEFAULTS, v || {});
+          settings.tts = Boolean(settings.tts);
           dbg("settings", { tts: settings.tts, mode: settings.ttsMode, lang: settings.ttsLang });
           cb();
         });
@@ -390,6 +391,7 @@
     }
 
     function enqueue(text) {
+      if (!settings.tts) return;
       if (getPhase() !== "idle") { pending = text; return; }
       speak(text);
     }
