@@ -88,13 +88,17 @@
       data-i18n-ph="tokenPh"
       style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
   </label>
+  <label class="toggle" style="display:block"><span data-i18n="portLabel">Порт сервера</span>
+    <input type="number" id="sttPort" placeholder="8765" min="1" max="65535"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+  </label>
   <button id="beepTestBtn" class="btn secondary" data-i18n="beepTest">🔔 Проверить звук</button>
   <button id="ttsTestBtn" class="btn secondary" data-i18n="ttsTest">🔊 Тест озвучки</button>
   <button id="testBtn" class="btn primary" disabled data-i18n="sttTest">Тест STT сервера</button>
   <button id="healBtn" class="btn secondary" data-i18n="heal">🔧 Восстановить сервер</button>
   <button id="openBtn" class="btn secondary" data-i18n="openSettings">Открыть настройки</button>
   <div class="info" id="versions"></div>
-  <div class="info" data-i18n="infoFooter">Работает на http://127.0.0.1:8765 (локальный STT-сервер). Установка и запуск — ./setup.sh, диагностика — doctor.sh.</div>
+  <div class="info" data-i18n="infoFooter">Локальный STT-сервер (хост/порт — из полей выше, по умолчанию 127.0.0.1:8765). Установка и запуск — ./setup.sh, диагностика — doctor.sh.</div>
   <script src="popup.js"></script>
 </body>
 </html>

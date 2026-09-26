@@ -14,6 +14,7 @@ Run:
 
 import array
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -1383,6 +1384,24 @@ _RESPAWN_HELPER = (
 )
 
 
+def _port_serves_health(host: str, port: int, timeout: float = 1.0) -> bool:
+    """True, если на порту уже отвечает живой сервер (GET /health -> 200).
+
+    Нужно, чтобы дубликатный запуск (второй процесс от watchdog, ручной
+    `python3 stt_server.py` при живом сервере) выходил сразу с понятной
+    ошибкой, а не спамил 40 ретраев "Address already in use" в общий лог.
+    """
+    target = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    try:
+        conn = http.client.HTTPConnection(target, port, timeout=timeout)
+        conn.request("GET", "/health")
+        ok = conn.getresponse().status == 200
+        conn.close()
+        return ok
+    except Exception:
+        return False
+
+
 def _server_port_from_argv() -> int:
     """Порт из sys.argv (--port N / --port=N), иначе env или 8765."""
     argv = sys.argv
@@ -1759,10 +1778,50 @@ if __name__ == "__main__":
     _purge_old_files()
     threading.Thread(target=_purge_loop, daemon=True).start()
     # При перезапуске (/heal) порт может освобождаться не мгновенно — пробуем снова.
+    # Но если порт держит ЖИВОЙ сервер (дубликатный запуск) — выходим сразу,
+    # ничего не трогая: иначе дубликаты спамят лог и умирают молча.
+    if _port_serves_health(args.host, args.port):
+        logger.error(
+            "порт %s уже занят живым сервером — дубликатный запуск, выхожу "
+            "(старый процесс не трогаю; для рестарта: POST /heal?restart=1)",
+            args.port,
+        )
+        sys.exit(2)
     for _attempt in range(40):
         try:
             app.run(host=args.host, port=args.port, threaded=True)
             break
         except SystemExit:
+            # Werkzeug при занятом порте печатает "Address already in use"
+            # и выходит через sys.exit -> SystemExit.
+            if _port_serves_health(args.host, args.port):
+                logger.error(
+                    "порт %s занят живым сервером — дубликат, выхожу", args.port
+                )
+                sys.exit(2)
             logger.warning("порт ещё занят — повторная попытка через 0.5 с")
             time.sleep(0.5)
+        except OSError as e:
+            # Новые версии Werkzeug могут кидать OSError напрямую.
+            if _port_serves_health(args.host, args.port):
+                logger.error(
+                    "порт %s занят живым сервером — дубликат, выхожу", args.port
+                )
+                sys.exit(2)
+            logger.warning("bind не удался (%s) — повторная попытка через 0.5 с", e)
+            time.sleep(0.5)
+    else:
+        logger.error("не удалось занять порт %s за ~20 с — выхожу с кодом 1", args.port)
+        if not _port_serves_health(args.host, args.port):
+            # Порт никто не слушает, но bind падает: классика WSL + Windows
+            # (Hyper-V зарезервировал диапазон: netsh interface ipv4 show
+            # excludedportrange). Лечится на Windows с правами админа:
+            # net stop winnat && net start winnat (или перезагрузка).
+            logger.error(
+                "порт %s никто не слушает, но bind падает — вероятно, Windows "
+                "зарезервировал диапазон (Hyper-V/WinNAT). Проверьте на Windows "
+                "(admin): netsh interface ipv4 show excludedportrange protocol=tcp; "
+                "лечение: net stop winnat && net start winnat, затем перезапустите сервер",
+                args.port,
+            )
+        sys.exit(1)

@@ -39,6 +39,7 @@ const UI = {
     speed: 'Скорость:',
     tokenLabel: 'Токен доступа',
     tokenPh: 'OPENCODE_VOICE_TOKEN (необязательно)',
+    portLabel: 'Порт сервера',
     uiLangLabel: 'Язык интерфейса',
     beepTest: '🔔 Проверить звук',
     ttsTest: '🔊 Тест озвучки',
@@ -47,14 +48,14 @@ const UI = {
     heal: '🔧 Восстановить сервер',
     healing: '🔧 Восстанавливаю…',
     openSettings: 'Открыть настройки',
-    infoFooter: 'Работает на http://127.0.0.1:8765 (локальный STT-сервер). Установка и запуск — ./setup.sh, диагностика — doctor.sh.',
+    infoFooter: 'Локальный STT-сервер (хост/порт — из полей выше, по умолчанию 127.0.0.1:8765). Установка и запуск — ./setup.sh, диагностика — doctor.sh.',
     versions: 'Расширение v{ext} · сервер v{ver} ({backend}/{device})',
     statusOk: '✅ STT сервер v{ver} · {backend}',
     statusDown: '❌ STT сервер недоступен: {err}',
     statusWait: '⏳ Жду сервер…',
     statusWaitSec: '⏳ Жду сервер… {sec} с',
     statusRestarted: '✅ Сервер перезапущен · v{ver} · {backend}',
-    statusRestartFail: '❌ Сервер не поднялся за отведённое время — запустите doctor.sh --fix (или ./setup.sh)',
+    statusRestartFail: '❌ Сервер не поднялся — в OpenCode выполните /voice heal (или bash doctor.sh --fix)',
     testSent: '🔊 Тест отправлен — должна звучать фраза',
     noContentScript: '⚠️ Content-скрипт не ответил',
     openPage: '⚠️ Откройте страницу OpenCode и обновите её (F5)',
@@ -95,6 +96,7 @@ const UI = {
     speed: 'Speed:',
     tokenLabel: 'Access token',
     tokenPh: 'OPENCODE_VOICE_TOKEN (optional)',
+    portLabel: 'Server port',
     uiLangLabel: 'Interface language',
     beepTest: '🔔 Test sound',
     ttsTest: '🔊 Test TTS',
@@ -103,14 +105,14 @@ const UI = {
     heal: '🔧 Heal server',
     healing: '🔧 Healing…',
     openSettings: 'Open settings',
-    infoFooter: 'Runs on http://127.0.0.1:8765 (local STT server). Install & run — ./setup.sh, diagnostics — doctor.sh.',
+    infoFooter: 'Local STT server (host/port from the fields above, default 127.0.0.1:8765). Install & run — ./setup.sh, diagnostics — doctor.sh.',
     versions: 'Extension v{ext} · server v{ver} ({backend}/{device})',
     statusOk: '✅ STT server v{ver} · {backend}',
     statusDown: '❌ STT server unavailable: {err}',
     statusWait: '⏳ Waiting for server…',
     statusWaitSec: '⏳ Waiting for server… {sec}s',
     statusRestarted: '✅ Server restarted · v{ver} · {backend}',
-    statusRestartFail: '❌ Server did not come up in time — run doctor.sh --fix (or ./setup.sh)',
+    statusRestartFail: '❌ Server did not come up — run /voice heal in OpenCode (or bash doctor.sh --fix)',
     testSent: '🔊 Test sent — you should hear a phrase',
     noContentScript: '⚠️ Content script did not respond',
     openPage: '⚠️ Open the OpenCode page and reload it (F5)',
@@ -167,17 +169,36 @@ const beepsEl = document.getElementById('beeps');
 const beepTestBtn = document.getElementById('beepTestBtn');
 const tokenEl = document.getElementById('token');
 
-// Токен доступа (если на сервере задан OPENCODE_VOICE_TOKEN) и хост сервера.
-chrome.storage.local.get({ token: '', sttHost: '' }, (v) => {
+// Токен доступа (если на сервере задан OPENCODE_VOICE_TOKEN), хост и порт сервера.
+// Порт настраивается здесь же (поле «Порт сервера»): бывает нужен не-8765,
+// когда порт съедает резерв Windows (Hyper-V/WinNAT).
+const portEl = document.getElementById('sttPort');
+function rebuildServer(host, port) {
+  const h = String(host || '').replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+  const p = Number(port) || 8765;
+  STT_SERVER = `http://${h || '127.0.0.1'}:${p}`;
+}
+chrome.storage.local.get({ token: '', sttHost: '', sttPort: 8765 }, (v) => {
   tokenEl.value = v.token || '';
-  const host = String(v.sttHost || '').replace(/^https?:\/\//, '').replace(/:\d+$/, '');
-  if (host) STT_SERVER = `http://${host}:8765`;
+  if (portEl) portEl.value = Number(v.sttPort) || 8765;
+  rebuildServer(v.sttHost, v.sttPort);
   checkServer();
 });
 tokenEl.addEventListener('change', () => {
   chrome.storage.local.set({ token: tokenEl.value.trim() });
   checkServer();
   fillServerVoices();
+});
+if (portEl) portEl.addEventListener('change', () => {
+  const p = Number(portEl.value) || 8765;
+  portEl.value = p;
+  chrome.storage.local.set({ sttPort: p });
+  // checkServer — только ПОСЛЕ пересборки URL: storage.get асинхронен,
+  // иначе проверка уйдёт на старый хост:порт и статус навсегда красный.
+  chrome.storage.local.get({ sttHost: '' }, (v) => {
+    rebuildServer(v.sttHost, p);
+    checkServer();
+  });
 });
 
 function authHeaders() {
@@ -450,12 +471,20 @@ healBtn.addEventListener('click', async () => {
   statusEl.textContent = t('healingServer');
   statusEl.className = 'status';
   healing = true;
+  let healSent = false;
   try {
-    await fetch(`${STT_SERVER}/heal?restart=1`, { method: 'POST', headers: authHeaders() });
+    const res = await fetch(`${STT_SERVER}/heal?restart=1`, { method: 'POST', headers: authHeaders() });
+    healSent = res.ok;
   } catch {
-    // сервер мог не успеть ответить — всё равно ждём восстановления
+    // Сервер мёртв — /heal недоступен. Ждём watchdog/OpenCode, при неудаче
+    // подскажем /voice heal (браузер сам процесс поднять не может).
+    healSent = false;
   }
-  await waitForServer(60000);
+  // 150 с — как wait_server в doctor.sh (watchdog плагина + прямой старт).
+  const ok = await waitForServer(150000);
+  if (!ok && !healSent) {
+    // waitForServer уже показал statusRestartFail с подсказкой /voice heal.
+  }
   healing = false;
   healBtn.disabled = false;
   healBtn.textContent = t('heal');

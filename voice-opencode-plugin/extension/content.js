@@ -2,17 +2,29 @@
 // OpenCode Voice - Content Script
 // Injects 🎤 button into OpenCode web UI
 
-// STT сервер слушает 0.0.0.0:8765 → доступен по тому же хосту, что и веб-UI
-// (важно при доступе через WSL2 IP, а не localhost).
-const STT_PORT = 8765;
+// STT-сервер доступен по тому же хосту, что и веб-UI (важно при доступе через
+// WSL2 IP, а не localhost). Порт по умолчанию 8765, меняется в popup (поле
+// «Порт сервера», chrome.storage: sttPort) — нужно, когда порт съедает резерв
+// Windows (Hyper-V/WinNAT: netsh interface ipv4 show excludedportrange).
+const DEFAULT_STT_PORT = 8765;
+let STT_PORT = DEFAULT_STT_PORT;
 // Перезаписывается значением max_upload_mb из /health (единый источник — сервер).
 let MAX_UPLOAD_MB = 25;
 // localhost на Windows может резолвиться в IPv6 ::1, а сервер слушает 127.0.0.1 —
 // поэтому для локального случая всегда используем 127.0.0.1 (для LAN/IP не меняем).
 const STT_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.hostname;
-const STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
+let STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
 // Запоминаем хост, чтобы popup ходил на тот же сервер (важно при доступе по LAN/IP).
 try { chrome.storage.local.set({ sttHost: STT_HOST }); } catch {}
+try {
+  chrome.storage.local.get({ sttPort: DEFAULT_STT_PORT }, (v) => {
+    const p = Number(v.sttPort) || DEFAULT_STT_PORT;
+    if (p !== STT_PORT) {
+      STT_PORT = p;
+      STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
+    }
+  });
+} catch {}
 const LOG_PREFIX = '[OpenCode Voice]';
 
 function log(...args) {
@@ -650,7 +662,7 @@ try {
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.34 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.36 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

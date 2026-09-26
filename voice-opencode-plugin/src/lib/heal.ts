@@ -14,7 +14,7 @@
 import { existsSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { ensureSttServer } from "./server-launcher.ts"
+import { ensureSttServer, isServerUp } from "./server-launcher.ts"
 
 export interface HealOptions {
   /** Каталог проекта OpenCode (для поиска doctor.sh). */
@@ -26,6 +26,8 @@ export interface HealOptions {
   log?: (message: string, extra?: Record<string, unknown>) => void | Promise<void>
   env?: NodeJS.ProcessEnv
   now?: () => number
+  /** Проверка, что сервер реально поднялся (по умолчанию GET /health; в тестах — стаб). */
+  probe?: () => Promise<boolean>
 }
 
 export interface HealResult {
@@ -82,6 +84,8 @@ export async function heal($: any, opts: HealOptions): Promise<HealResult> {
     if (now - lastHealAt < cooldownMs(env)) return { healed: false, script: null, skipped: "cooldown" }
   }
 
+  // Проверка живости сервера после ремонта (по умолчанию — реальный GET /health).
+  const probe = opts.probe || (() => isServerUp(3000).catch(() => false))
   const script = doctorScript(opts.directory)
   if (script) {
     try {
@@ -89,8 +93,11 @@ export async function heal($: any, opts: HealOptions): Promise<HealResult> {
       lastHealAt = now
       // doctor мог остановить сервер — поднимаем сразу, не дожидаясь watchdog.
       try { await ensureSttServer(opts.directory, opts.log) } catch {}
-      await opts.log?.("heal: doctor --fix done", { script, reason: opts.reason })
-      return { healed: true, script }
+      const up = await probe()
+      await opts.log?.("heal: doctor --fix done", { script, reason: opts.reason, up })
+      return up
+        ? { healed: true, script }
+        : { healed: false, script, skipped: "doctor-failed" }
     } catch (e: any) {
       lastHealAt = now
       await opts.log?.("heal: doctor failed", { script, error: e?.message || String(e) })
@@ -106,6 +113,7 @@ export async function heal($: any, opts: HealOptions): Promise<HealResult> {
     await rec.recoverMic($)
   } catch {}
   lastHealAt = now
-  await opts.log?.("heal: fallback applied", { reason: opts.reason })
-  return { healed: true, script: null }
+  const up = await probe()
+  await opts.log?.("heal: fallback applied", { reason: opts.reason, up })
+  return up ? { healed: true, script: null } : { healed: false, script: null, skipped: "doctor-failed" }
 }

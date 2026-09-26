@@ -33,8 +33,26 @@ say() { printf '%s %s\n' "$1" "$2"; }
 server_pid() { pgrep -f 'stt_server\.py' | head -1; }
 port_up() { ss -ltn 2>/dev/null | grep -q ":${PORT}\b"; }
 
+start_server() { # прямой старт (не зависит от watchdog плагина)
+  local script="${SCRIPT_DIR}/stt-server/stt_server.py"
+  [[ -f "$script" ]] || script="${SCRIPT_DIR}/../stt-server/stt_server.py"
+  [[ -f "$script" ]] || { say "$BAD" "не найден stt_server.py рядом с doctor.sh"; return 1; }
+  [[ -d /tmp/opencode ]] || mkdir -p /tmp/opencode
+  # shellcheck disable=SC2086
+  nohup python3 -u "$script" --port "${PORT}" >>"$LOG" 2>&1 < /dev/null &
+  say "…" "сервер стартует напрямую (PID $!; лог $LOG)"
+}
+
 wait_server() { # до ~150 c
   for _ in $(seq 1 25); do
+    if port_up && curl -sf -m 3 "$BASE/health" >/dev/null 2>&1; then return 0; fi
+    sleep 6
+  done
+  return 1
+}
+
+wait_server_short() { # до ~30 c (шанс штатному watchdog, прежде чем стартовать самим)
+  for _ in $(seq 1 5); do
     if port_up && curl -sf -m 3 "$BASE/health" >/dev/null 2>&1; then return 0; fi
     sleep 6
   done
@@ -56,12 +74,39 @@ else
     P="$(server_pid || true)"
     if [[ -n "${P:-}" ]]; then
       kill "$P" 2>/dev/null || true
-      say "…" "сервер остановлен (PID $P); ждём watchdog…"
+      say "…" "старый процесс остановлен (PID $P)"
+      sleep 2
     else
-      say "…" "процесс не найден; ждём watchdog…"
+      say "…" "процесс не найден — стартуем заново"
     fi
-    if wait_server; then say "$OK" "Сервер поднялся (авто)"; fixed+=("server-restart"); else
-      say "$WARN" "watchdog не поднял за ~150 c — перезапусти OpenCode"; fi
+    # Сначала ждём штатный watchdog плагина (до ~30 c), затем стартуем сами:
+    # watchdog может быть выключен или OpenCode запущен в web-режиме без плагина.
+    if wait_server_short; then say "$OK" "Сервер поднялся (watchdog)"; fixed+=("server-restart"); else
+      start_server
+      if wait_server; then say "$OK" "Сервер поднят напрямую"; fixed+=("server-restart"); else
+        say "$WARN" "сервер не поднялся — смотри $LOG и перезапусти OpenCode"; fi
+    fi
+  fi
+fi
+
+# 1b) Фантомная занятость порта (WSL + Windows) ------------------------------
+# bind падает, хотя порт никто не слушает: Windows зарезервировал диапазон
+# (Hyper-V/WinNAT). Детектим пробным биндом.
+if ! port_up; then
+  if ! python3 -c "import socket,sys; s=socket.socket(); s.bind(('127.0.0.1',$PORT))" 2>/dev/null; then
+    say "$BAD" "порт $PORT недоступен для bind, хотя его никто не слушает"
+    issues+=("port-blocked")
+    cat <<TIPS
+  … похоже на резерв Windows (Hyper-V/WinNAT съел диапазон с портом $PORT).
+  Проверьте на Windows:  netsh interface ipv4 show excludedportrange protocol=tcp
+  Лечение (Windows, запуск от АДМИНИСТРА):
+    1) wsl --shutdown   (в обычном терминале — гасит все дистрибутивы!)
+    2) net stop winnat && net start winnat
+    3) netsh interface ipv4 show excludedportrange protocol=tcp  (проверить, что $PORT свободен)
+    4) запустить WSL заново — watchdog плагина поднимет сервер сам (или bash doctor.sh --fix)
+  Запасной путь без админ-прав: переехать на свободный порт,
+    например OPENCODE_VOICE_PORT=19876 (и тот же порт в настройках расширения).
+TIPS
   fi
 fi
 
@@ -111,6 +156,8 @@ else
   issues+=("cors")
   if [[ $FIX -eq 1 && -z "$(printf '%s\n' "${fixed[@]:-}")" ]]; then
     P="$(server_pid || true)"; [[ -n "${P:-}" ]] && kill "$P" 2>/dev/null || true
+    sleep 2
+    start_server
     if wait_server; then say "$OK" "Сервер перезапущен с новым CORS"; fixed+=("cors"); fi
   else
     say "…" "лечится перезапуском STT-сервера (после правок CORS)"

@@ -23,16 +23,42 @@ test("doctorScript returns null when doctor.sh is absent", () => {
   assert.equal(doctorScript(tmpProject(false)), null)
 })
 
+// Hermetic: не спавним реальный сервер (OPENCODE_VOICE_SERVER=0 глушит
+// ensureSttServer) и стабим финальный probe — иначе тест ждёт 60 с и зависит от сети.
+async function withNoServer(fn) {
+  const prev = process.env.OPENCODE_VOICE_SERVER
+  process.env.OPENCODE_VOICE_SERVER = "0"
+  try {
+    return await fn()
+  } finally {
+    if (prev === undefined) delete process.env.OPENCODE_VOICE_SERVER
+    else process.env.OPENCODE_VOICE_SERVER = prev
+  }
+}
+
 test("heal runs doctor.sh --fix when forced", async () => {
-  const dir = tmpProject()
-  const calls = []
-  const $ = makeFakeBash({ stubs: { bash: (args) => { calls.push(args.join(" ")); return "" } } })
-  resetHealCooldown()
-  const res = await heal($, { directory: dir, force: true })
-  assert.equal(res.healed, true)
-  assert.ok(String(res.script).endsWith("doctor.sh"))
-  assert.equal(calls.length, 1)
-  assert.ok(calls[0].endsWith("--fix"))
+  await withNoServer(async () => {
+    const dir = tmpProject()
+    const calls = []
+    const $ = makeFakeBash({ stubs: { bash: (args) => { calls.push(args.join(" ")); return "" } } })
+    resetHealCooldown()
+    const res = await heal($, { directory: dir, force: true, probe: async () => true })
+    assert.equal(res.healed, true)
+    assert.ok(String(res.script).endsWith("doctor.sh"))
+    assert.equal(calls.length, 1)
+    assert.ok(calls[0].endsWith("--fix"))
+  })
+})
+
+test("heal reports failure when the server is still down after --fix", async () => {
+  await withNoServer(async () => {
+    const dir = tmpProject()
+    const $ = makeFakeBash({ stubs: { bash: () => "" } })
+    resetHealCooldown()
+    const res = await heal($, { directory: dir, force: true, probe: async () => false })
+    assert.equal(res.healed, false)
+    assert.equal(res.skipped, "doctor-failed")
+  })
 })
 
 test("auto-heal is skipped when disabled", async () => {
@@ -46,15 +72,17 @@ test("auto-heal is skipped when disabled", async () => {
 })
 
 test("auto-heal honors the cooldown", async () => {
-  const dir = tmpProject()
-  const $ = makeFakeBash({ stubs: { bash: () => "" } })
-  resetHealCooldown()
-  const t = 1_000_000
-  const first = await heal($, { directory: dir, env: {}, now: () => t })
-  assert.equal(first.healed, true)
-  const blocked = await heal($, { directory: dir, env: {}, now: () => t + 10_000 })
-  assert.equal(blocked.healed, false)
-  assert.equal(blocked.skipped, "cooldown")
-  const allowed = await heal($, { directory: dir, env: {}, now: () => t + 91_000 })
-  assert.equal(allowed.healed, true)
+  await withNoServer(async () => {
+    const dir = tmpProject()
+    const $ = makeFakeBash({ stubs: { bash: () => "" } })
+    resetHealCooldown()
+    const t = 1_000_000
+    const first = await heal($, { directory: dir, env: {}, now: () => t, probe: async () => true })
+    assert.equal(first.healed, true)
+    const blocked = await heal($, { directory: dir, env: {}, now: () => t + 10_000, probe: async () => true })
+    assert.equal(blocked.healed, false)
+    assert.equal(blocked.skipped, "cooldown")
+    const allowed = await heal($, { directory: dir, env: {}, now: () => t + 91_000, probe: async () => true })
+    assert.equal(allowed.healed, true)
+  })
 })
