@@ -6,6 +6,19 @@ All notable changes to OpenCode Voice are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-09-26
+
+### Added
+- **Переключение GPU/CPU без рестарта:** `POST /device {"device": "auto"|"gpu"|"cpu"}`
+  (бэкенд выбирается на запрос; `device_mode` в `/health`); в popup — селект
+  «Устройство (GPU/CPU)» (расширение `1.0.48`).
+- **CPU-фолбэк следует за выбранной моделью** (`large-v3-q5_0` → `large`, …;
+  при смене — перезагрузка, в памяти одна); прямой CPU-режим грузит модель
+  лениво (раньше падал с `'NoneType' has no attribute 'transcribe'`).
+- **Полная документация v1:** новый `voice-opencode-plugin/DOCS.ru.md`
+  (компоненты, потоки, все роуты/env/селекты, скрипты, тесты, ловушки) +
+  раздел GPU-vs-CPU (автооткат, чего нет).
+
 Version in code: `PLUGIN_VERSION` (`voice-opencode-plugin/src/lib/config.ts`), `SERVER_VERSION`
 (`voice-opencode-plugin/stt-server/stt_server.py`), `package.json` and `/health` (field `version`).
 The Chrome extension is versioned independently (`voice-opencode-plugin/extension/manifest.json`).

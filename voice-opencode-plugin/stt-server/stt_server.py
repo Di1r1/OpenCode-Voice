@@ -633,7 +633,7 @@ model = None
 MODEL_SIZE = _default_model_size()
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
-SERVER_VERSION = "0.4.2"
+SERVER_VERSION = "0.4.3"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
 FT_MODEL = _default_model_size()
@@ -1047,14 +1047,52 @@ def transcribe_file(path: str) -> dict:
                 logger.error("faster-whisper недоступен для отката: %s", fe)
                 raise e
             return _transcribe_faster_whisper(path)
+    # Прямой CPU-режим (старт с faster-whisper или POST /device cpu):
+    # модель могла быть не загружена (ленивая загрузка).
+    _ensure_faster_whisper()
     return _transcribe_faster_whisper(path)
 
 
+_FW_SIZES = ("tiny", "base", "small", "medium", "large", "turbo")
+_fw_loaded_size = None
+
+
+def _fw_size_for_ggml() -> str:
+    """Размер faster-whisper под стать выбранной ggml-модели.
+
+    Раньше фолбэк всегда грузил medium (дефолт старта) — при выбранном large
+    recognition шёл не той моделью. large-v3-q5_0 → large, medium-q5_0 → medium.
+    Неизвестное имя — как раньше (FT_MODEL).
+    """
+    stem = os.path.basename(WHISPER_CPP_MODEL or "")
+    if stem.startswith("ggml-"):
+        stem = stem[5:]
+    if stem.endswith(".bin"):
+        stem = stem[:-4]
+    low = stem.lower()
+    for size in _FW_SIZES:
+        if low == size or low.startswith(size + "-") or low.startswith(size + "."):
+            return size
+    return FT_MODEL
+
+
 def _ensure_faster_whisper():
-    """Ленивая загрузка CPU-модели (используется при откате с whisper.cpp)."""
-    global model
-    if model is None:
-        load_model(FT_MODEL, FT_DEVICE, FT_COMPUTE)
+    """Ленивая загрузка CPU-модели (используется при откате с whisper.cpp).
+
+    Размер следует за выбранной ggml-моделью; при смене — перезагрузка
+    (в памяти всегда одна CPU-модель). Первое обращение к новому размеру
+    докачивает его из HuggingFace (~3 ГБ для large).
+    """
+    global model, _fw_loaded_size
+    want = _fw_size_for_ggml()
+    if model is None or _fw_loaded_size != want:
+        if model is not None:
+            logger.info(f"CPU fallback: смена модели {_fw_loaded_size} -> {want}")
+        load_model(want, FT_DEVICE, FT_COMPUTE)
+        # /health и ответы показывают выбранную ggml-модель, а не фолбэк.
+        global MODEL_SIZE
+        MODEL_SIZE = os.path.basename(WHISPER_CPP_MODEL)
+        _fw_loaded_size = want
     return model
 
 
@@ -1646,6 +1684,49 @@ def _available_stt_models() -> list:
 
 _TTS_ENGINES = ("piper", "silero")
 
+# Режим устройства распознавания: auto|gpu|cpu. В отличие от модели и движка,
+# переключается БЕЗ рестарта — transcribe_file смотрит STT_BACKEND на запрос.
+# cpu = faster-whisper (ленивая загрузка при первом запросе), gpu = whisper.cpp.
+_DEVICE_MODE = (os.getenv("OPENCODE_VOICE_DEVICE", "") or "auto").strip().lower() or "auto"
+if _DEVICE_MODE not in ("auto", "gpu", "cpu"):
+    _DEVICE_MODE = "auto"
+
+
+@app.route("/device", methods=["POST"])
+def device_route():
+    """Смена устройства STT на лету: {"device": "auto"|"gpu"|"cpu"}.
+
+    auto: whisper.cpp при наличии бинарника+модели, иначе CPU.
+    gpu: 400, если whisper.cpp недоступен. cpu: faster-whisper
+    (модель догрузится при первом запросе — может занять время).
+    """
+    if _rate_limited("device"):
+        return jsonify({"error": "rate limited"}), 429
+    data = request.get_json(silent=True) or {}
+    device = str(data.get("device", "")).strip().lower()
+    if device not in ("auto", "gpu", "cpu"):
+        return jsonify({"status": "error",
+                        "error": "unknown device (want auto|gpu|cpu)"}), 400
+    global STT_BACKEND, _DEVICE_MODE
+    if device == "cpu":
+        STT_BACKEND = "faster-whisper"
+    elif device == "gpu":
+        if not whispercpp_available():
+            return jsonify({"status": "error",
+                            "error": "whispercpp unavailable (no binary/model)"}), 400
+        STT_BACKEND = "whispercpp"
+    else:
+        STT_BACKEND = "whispercpp" if whispercpp_available() else "faster-whisper"
+    _DEVICE_MODE = device
+    _log_request("device", f"switch to {device} (backend={STT_BACKEND})")
+    return jsonify({
+        "status": "ok",
+        "restarting": False,
+        "device": _DEVICE_MODE,
+        "backend": STT_BACKEND,
+        "version": SERVER_VERSION,
+    })
+
 
 @app.route("/engine", methods=["POST"])
 def engine_route():
@@ -1682,6 +1763,7 @@ def health():
         "backend": backend,
         "model": MODEL_SIZE,
         "models": _available_stt_models(),
+        "device_mode": _DEVICE_MODE,
         "device": "cuda" if (backend == "whispercpp" and _cuda_available()) else DEVICE,
         "recorder": _record_probe_cmd(),
         "pulse_server": os.getenv("PULSE_SERVER", ""),
@@ -1929,6 +2011,7 @@ if __name__ == "__main__":
         logger.info(f"CPU fallback: faster-whisper {FT_MODEL} ({FT_DEVICE}/{FT_COMPUTE})")
     else:
         load_model(args.model, args.device, args.compute_type)
+        _fw_loaded_size = args.model
         logger.info(f"STT backend: faster-whisper ({args.device}/{args.compute_type})")
 
     _runtime_checks()

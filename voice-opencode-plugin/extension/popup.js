@@ -44,6 +44,8 @@ const UI = {
     portLabel: 'Порт сервера',
     sttModelLabel: 'Модель распознавания',
     modelSwitchFail: '❌ Модель не переключена: {err}',
+    sttDeviceLabel: 'Устройство (GPU/CPU)',
+    deviceSwitchFail: '❌ Устройство не переключено: {err}',
     ttsServerEngineLabel: 'Движок сервера',
     engineSwitchFail: '❌ Движок не переключён: {err}',
     uiLangLabel: 'Язык интерфейса',
@@ -107,6 +109,8 @@ const UI = {
     portLabel: 'Server port',
     sttModelLabel: 'Recognition model',
     modelSwitchFail: '❌ Model not switched: {err}',
+    sttDeviceLabel: 'Device (GPU/CPU)',
+    deviceSwitchFail: '❌ Device not switched: {err}',
     ttsServerEngineLabel: 'Server engine',
     engineSwitchFail: '❌ Engine not switched: {err}',
     uiLangLabel: 'Interface language',
@@ -444,6 +448,45 @@ function fillSttModel(current, available) {
   sttModelEl.value = cur;
   sttModelEl.disabled = !cur;
 }
+// Устройство STT (POST /device, без рестарта: бэкенд выбирается на запрос).
+// cpu = faster-whisper (модель догрузится при первом запросе).
+const sttDeviceEl = document.getElementById('sttDevice');
+const KNOWN_STT_DEVICES = ['auto', 'gpu', 'cpu'];
+function fillSttDevice(current) {
+  if (!sttDeviceEl) return;
+  const cur = KNOWN_STT_DEVICES.includes(current) ? current : 'auto';
+  sttDeviceEl.innerHTML = '';
+  for (const n of KNOWN_STT_DEVICES) {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n;
+    sttDeviceEl.appendChild(o);
+  }
+  sttDeviceEl.value = cur;
+  sttDeviceEl.disabled = false;
+}
+if (sttDeviceEl) sttDeviceEl.addEventListener('change', async () => {
+  const d = sttDeviceEl.value;
+  if (!d) return;
+  sttDeviceEl.disabled = true;
+  try {
+    const res = await fetch(`${STT_SERVER}/device`, {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ device: d }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    await checkServer();
+  } catch (err) {
+    statusEl.textContent = t('deviceSwitchFail', { err: err.message });
+    statusEl.className = 'status error';
+    try { await checkServer(); } catch {}
+  } finally {
+    sttDeviceEl.disabled = false;
+  }
+});
+
 if (sttModelEl) sttModelEl.addEventListener('change', async () => {
   const m = sttModelEl.value;
   if (!m) return;
@@ -593,6 +636,9 @@ async function checkServer() {
       if (typeof fillServerVoices === 'function') void fillServerVoices();
       if (typeof fillSttModel === 'function') fillSttModel(modelName(info.model), info.models);
       if (typeof fillTtsEngine === 'function') fillTtsEngine(info.tts && info.tts.engine);
+      if (typeof fillSttDevice === 'function') {
+        fillSttDevice(info.device_mode || (info.backend === 'faster-whisper' ? 'cpu' : 'auto'));
+      }
     } else {
       throw new Error(`HTTP ${res.status}`);
     }

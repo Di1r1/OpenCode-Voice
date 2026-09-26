@@ -59,6 +59,7 @@ def _reset_state(monkeypatch):
     srv._rec_proc = None
     srv._rec_file = None
     srv._cancel_watchdog()
+    srv._fw_loaded_size = None
     yield
     srv._rate_buckets.clear()
     srv._transcribe_sem = srv.threading.Semaphore(srv.MAX_CONCURRENT)
@@ -668,6 +669,75 @@ def test_engine_rejects_unknown(client, monkeypatch):
     assert r.status_code == 400
     assert called == []
     assert os.environ.get("OPENCODE_VOICE_TTS_ENGINE") == before
+
+
+def test_fw_size_for_ggml(monkeypatch):
+    cases = {
+        "/m/ggml-large-v3-q5_0.bin": "large",
+        "/m/ggml-medium-q5_0.bin": "medium",
+        "/m/ggml-medium.bin": "medium",
+        "/m/ggml-small.bin": "small",
+        "/m/ggml-large-v3-turbo-q5_0.bin": "large",
+        "/m/ggml-tiny.bin": "tiny",
+        "/m/ggml-weird.bin": "medium",  # FT_MODEL дефолт в тестах
+    }
+    monkeypatch.setattr(srv, "FT_MODEL", "medium")
+    for path, want in cases.items():
+        monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", path)
+        assert srv._fw_size_for_ggml() == want, path
+
+
+def test_fallback_follows_selected_model(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "STT_BACKEND", "whispercpp")
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", "/m/ggml-large-v3-q5_0.bin")
+    monkeypatch.setattr(srv, "FT_DEVICE", "cpu")
+    monkeypatch.setattr(srv, "FT_COMPUTE", "int8")
+    monkeypatch.setattr(srv, "model", object())
+    monkeypatch.setattr(srv, "_fw_loaded_size", "medium")
+    seen = {}
+    monkeypatch.setattr(srv, "load_model",
+                        lambda size, dev, comp: seen.update(size=size))
+    monkeypatch.setattr(srv, "_transcribe_whispercpp",
+                        lambda path: (_ for _ in ()).throw(RuntimeError("gpu down")))
+    monkeypatch.setattr(srv, "_transcribe_faster_whisper",
+                        lambda path: {"text": "ok", "backend": "faster-whisper"})
+    out = srv.transcribe_file(str(tmp_path))
+    assert out["text"] == "ok"
+    assert seen["size"] == "large"
+    assert srv._fw_loaded_size == "large"
+
+
+def test_device_switch_cpu_gpu_auto(client, monkeypatch):
+    monkeypatch.setattr(srv, "STT_BACKEND", "whispercpp")
+    monkeypatch.setattr(srv, "_DEVICE_MODE", "auto")
+    r = client.post("/device", json={"device": "cpu"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["device"] == "cpu" and body["backend"] == "faster-whisper"
+    assert body["restarting"] is False
+    r = client.post("/device", json={"device": "auto"})
+    assert r.status_code == 200
+    assert r.get_json()["device"] == "auto"
+    assert srv._DEVICE_MODE == "auto"
+
+
+def test_device_rejects_unknown(client, monkeypatch):
+    before = (srv.STT_BACKEND, srv._DEVICE_MODE)
+    r = client.post("/device", json={"device": "tpu"})
+    assert r.status_code == 400
+    assert (srv.STT_BACKEND, srv._DEVICE_MODE) == before
+
+
+def test_device_gpu_needs_binary(client, monkeypatch):
+    monkeypatch.setattr(srv, "whispercpp_available", lambda: False)
+    before = (srv.STT_BACKEND, srv._DEVICE_MODE)
+    r = client.post("/device", json={"device": "gpu"})
+    assert r.status_code == 400
+    assert (srv.STT_BACKEND, srv._DEVICE_MODE) == before
+
+
+def test_health_reports_device_mode(client):
+    assert client.get("/health").get_json()["device_mode"] in ("auto", "gpu", "cpu")
 
 
 def test_server_port_from_argv(monkeypatch):
