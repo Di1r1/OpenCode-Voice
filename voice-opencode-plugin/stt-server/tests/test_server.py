@@ -585,6 +585,91 @@ def test_heal_resets_stuck_recording(client):
     assert srv._rec_file is None
 
 
+# /model — смена STT-модели с перезапуском
+# ---------------------------------------------------------------------------
+
+def test_model_switch_ok(client, monkeypatch, tmp_path):
+    (tmp_path / "ggml-medium.bin").write_bytes(b"fake")
+    monkeypatch.setattr(srv, "_whisper_dir", lambda: str(tmp_path))
+    called = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: called.append(True))
+    old = os.environ.get("WHISPER_CPP_MODEL")
+    try:
+        r = client.post("/model", json={"model": "medium"})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["status"] == "ok"
+        assert body["restarting"] is True
+        assert body["model"] == "ggml-medium.bin"
+        assert os.environ["WHISPER_CPP_MODEL"] == str(tmp_path / "ggml-medium.bin")
+        assert called == [True]
+    finally:
+        if old is None:
+            os.environ.pop("WHISPER_CPP_MODEL", None)
+        else:
+            os.environ["WHISPER_CPP_MODEL"] = old
+
+
+def test_model_rejects_missing_file(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "_whisper_dir", lambda: str(tmp_path))
+    called = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: called.append(True))
+    before = os.environ.get("WHISPER_CPP_MODEL")
+    r = client.post("/model", json={"model": "large"})
+    assert r.status_code == 400
+    assert called == []
+    assert os.environ.get("WHISPER_CPP_MODEL") == before
+
+
+def test_model_rejects_bad_name(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "_whisper_dir", lambda: str(tmp_path))
+    called = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: called.append(True))
+    for bad in ["../x", "/etc/passwd", "", "a/b"]:
+        r = client.post("/model", json={"model": bad})
+        assert r.status_code == 400, bad
+    assert called == []
+
+
+def test_health_lists_installed_models(client, monkeypatch, tmp_path):
+    (tmp_path / "ggml-small.bin").write_bytes(b"x")
+    (tmp_path / "ggml-large-v3-q5_0.bin").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_text("not a model")
+    monkeypatch.setattr(srv, "_whisper_dir", lambda: str(tmp_path))
+    body = client.get("/health").get_json()
+    assert body["models"] == ["large-v3-q5_0", "small"]
+
+
+def test_engine_switch_ok(client, monkeypatch):
+    called = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: called.append(True))
+    old = os.environ.get("OPENCODE_VOICE_TTS_ENGINE")
+    try:
+        r = client.post("/engine", json={"engine": "silero"})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["status"] == "ok"
+        assert body["restarting"] is True
+        assert body["engine"] == "silero"
+        assert os.environ["OPENCODE_VOICE_TTS_ENGINE"] == "silero"
+        assert called == [True]
+    finally:
+        if old is None:
+            os.environ.pop("OPENCODE_VOICE_TTS_ENGINE", None)
+        else:
+            os.environ["OPENCODE_VOICE_TTS_ENGINE"] = old
+
+
+def test_engine_rejects_unknown(client, monkeypatch):
+    called = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: called.append(True))
+    before = os.environ.get("OPENCODE_VOICE_TTS_ENGINE")
+    r = client.post("/engine", json={"engine": "azure"})
+    assert r.status_code == 400
+    assert called == []
+    assert os.environ.get("OPENCODE_VOICE_TTS_ENGINE") == before
+
+
 def test_server_port_from_argv(monkeypatch):
     monkeypatch.setattr(srv.sys, "argv", ["stt_server.py", "--port", "9123"])
     assert srv._server_port_from_argv() == 9123
@@ -752,6 +837,62 @@ def test_speak_no_shell_injection(client, monkeypatch, tmp_path):
     r = client.post("/speak", json={"text": f"привет; $(touch {sentinel})"})
     assert r.status_code == 200
     assert not sentinel.exists()
+
+
+# ---------------------------------------------------------------------------
+# Silero — альтернативный движок (torch CPU + v4_ru.pt, без Piper)
+# ---------------------------------------------------------------------------
+
+def _enable_silero(monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "TTS_ENABLED", True)
+    monkeypatch.setattr(srv, "TTS_ENGINE", "silero")
+    monkeypatch.setattr(srv, "TTS_VOICE", "")
+    monkeypatch.setattr(srv, "TMP_DIR", str(tmp_path))
+    monkeypatch.delenv("OPENCODE_VOICE_TTS_BIN", raising=False)
+    srv._silero_model = None
+    return tmp_path
+
+
+def test_silero_allowed_voices(client, monkeypatch):
+    monkeypatch.setattr(srv, "TTS_ENGINE", "silero")
+    assert srv._tts_allowed_voices() == ["aidar", "baya", "eugene", "kseniya", "xenia"]
+
+
+def test_silero_unavailable_without_model(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "TTS_ENABLED", True)
+    monkeypatch.setattr(srv, "TTS_ENGINE", "silero")
+    monkeypatch.setattr(srv, "_tts_home", lambda: str(tmp_path / "nope"))
+    assert srv._tts_available() is False
+    assert client.post("/speak", json={"text": "привет"}).status_code == 501
+
+
+def test_silero_unknown_voice_is_400(client, monkeypatch, tmp_path):
+    _enable_silero(monkeypatch, tmp_path)
+    monkeypatch.setattr(srv, "_tts_available", lambda: True)
+    r = client.post("/speak", json={"text": "привет", "voice": "ruslan"})
+    assert r.status_code == 400
+    assert "unknown voice" in r.get_json()["error"]
+
+
+def test_silero_default_voice_is_kseniya(client, monkeypatch, tmp_path):
+    _enable_silero(monkeypatch, tmp_path)
+    # Герметичность: в CI нет torch/v4_ru.pt — доступность стабим.
+    monkeypatch.setattr(srv, "_tts_available", lambda: True)
+    seen = {}
+
+    def fake_synth(text, voice, rate, out):
+        seen["voice"] = voice
+        with wave.open(out, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(48000)
+            w.writeframes(b"\x00\x00" * 160)
+        return True, None
+
+    monkeypatch.setattr(srv, "_tts_synthesize", fake_synth)
+    r = client.post("/speak", json={"text": "привет"})
+    assert r.status_code == 200
+    assert seen["voice"] == "kseniya"
 
 
 def test_brief_sentences_include_errors():

@@ -31,15 +31,21 @@ const UI = {
     voiceLabel: 'Голос',
     voice_auto: 'Авто (по языку)',
     remoteVoice: ' (сеть)',
-    serverVoiceLabel: 'Голос сервера (Piper)',
+    serverVoiceLabel: 'Голос сервера ({engine})',
     serverVoice_default: 'По умолчанию ({def})',
     serverVoice_down: 'Сервер недоступен (проверьте /health)',
     localOnly: 'Только локальные голоса',
     debug: 'Лог в консоль (отладка)',
+    ttsOn: '🔊 Озвучка включена ({engine})',
+    ttsOff: '🔇 Озвучка выключена',
     speed: 'Скорость:',
     tokenLabel: 'Токен доступа',
     tokenPh: 'OPENCODE_VOICE_TOKEN (необязательно)',
     portLabel: 'Порт сервера',
+    sttModelLabel: 'Модель распознавания',
+    modelSwitchFail: '❌ Модель не переключена: {err}',
+    ttsServerEngineLabel: 'Движок сервера',
+    engineSwitchFail: '❌ Движок не переключён: {err}',
     uiLangLabel: 'Язык интерфейса',
     beepTest: '🔔 Проверить звук',
     ttsTest: '🔊 Тест озвучки',
@@ -51,7 +57,7 @@ const UI = {
     infoFooter: 'Локальный STT-сервер (хост/порт — из полей выше, по умолчанию 127.0.0.1:8765). Установка и запуск — ./setup.sh, диагностика — doctor.sh.',
     versions: 'Расширение v{ext} · сервер v{ver} ({backend}/{device})',
     statusOk: '✅ STT сервер v{ver} · {backend}',
-    statusDown: '❌ STT сервер недоступен: {err}',
+    statusDown: '❌ STT сервер недоступен ({url}): {err}',
     statusWait: '⏳ Жду сервер…',
     statusWaitSec: '⏳ Жду сервер… {sec} с',
     statusRestarted: '✅ Сервер перезапущен · v{ver} · {backend}',
@@ -65,7 +71,7 @@ const UI = {
     emptyResp: '(пусто)',
     statusNA: 'статус недоступен (обновите страницу F5)',
     testOk: '✅ Тест OK: "{text}"',
-    testErr: '❌ Ошибка теста: {err}',
+    testErr: '❌ Ошибка теста ({url}): {err}',
     healingServer: '🔧 Перезапускаю STT-сервер…',
     beepDown: '❌ STT сервер недоступен',
   },
@@ -88,15 +94,21 @@ const UI = {
     voiceLabel: 'Voice',
     voice_auto: 'Auto (by language)',
     remoteVoice: ' (network)',
-    serverVoiceLabel: 'Server voice (Piper)',
+    serverVoiceLabel: 'Server voice ({engine})',
     serverVoice_default: 'Default ({def})',
     serverVoice_down: 'Server unavailable (check /health)',
     localOnly: 'Local voices only',
     debug: 'Console log (debug)',
+    ttsOn: '🔊 TTS on ({engine})',
+    ttsOff: '🔇 TTS off',
     speed: 'Speed:',
     tokenLabel: 'Access token',
     tokenPh: 'OPENCODE_VOICE_TOKEN (optional)',
     portLabel: 'Server port',
+    sttModelLabel: 'Recognition model',
+    modelSwitchFail: '❌ Model not switched: {err}',
+    ttsServerEngineLabel: 'Server engine',
+    engineSwitchFail: '❌ Engine not switched: {err}',
     uiLangLabel: 'Interface language',
     beepTest: '🔔 Test sound',
     ttsTest: '🔊 Test TTS',
@@ -108,7 +120,7 @@ const UI = {
     infoFooter: 'Local STT server (host/port from the fields above, default 127.0.0.1:8765). Install & run — ./setup.sh, diagnostics — doctor.sh.',
     versions: 'Extension v{ext} · server v{ver} ({backend}/{device})',
     statusOk: '✅ STT server v{ver} · {backend}',
-    statusDown: '❌ STT server unavailable: {err}',
+    statusDown: '❌ STT server unavailable ({url}): {err}',
     statusWait: '⏳ Waiting for server…',
     statusWaitSec: '⏳ Waiting for server… {sec}s',
     statusRestarted: '✅ Server restarted · v{ver} · {backend}',
@@ -122,7 +134,7 @@ const UI = {
     emptyResp: '(empty)',
     statusNA: 'status unavailable (reload the page with F5)',
     testOk: '✅ Test OK: "{text}"',
-    testErr: '❌ Test error: {err}',
+    testErr: '❌ Test error ({url}): {err}',
     healingServer: '🔧 Restarting STT server…',
     beepDown: '❌ STT server unavailable',
   },
@@ -154,6 +166,15 @@ function applyUiLang(lang) {
   // Кнопки с состоянием (Тест/Восстановление) возвращаем к покоящимся подписям.
   if (typeof testBtn !== 'undefined' && testBtn && !testBtn.disabled) testBtn.textContent = t('sttTest');
   if (typeof healBtn !== 'undefined' && healBtn && !healBtn.disabled) healBtn.textContent = t('heal');
+  // Подпись голоса сервера зависит от движка — обновляем после смены языка.
+  if (typeof refreshServerVoiceLabel === 'function') refreshServerVoiceLabel();
+}
+
+// Текущий движок сервера (из /health); подпись селекта голоса показывает его.
+let currentServerEngine = '';
+function refreshServerVoiceLabel() {
+  const el = document.querySelector('[data-i18n="serverVoiceLabel"]');
+  if (el) el.textContent = t('serverVoiceLabel', { engine: currentServerEngine || '…' });
 }
 
 const uiLangEl = document.getElementById('uiLang');
@@ -178,10 +199,13 @@ function rebuildServer(host, port) {
   const p = Number(port) || 8765;
   STT_SERVER = `http://${h || '127.0.0.1'}:${p}`;
 }
+let storageReady = false;
+let checkInFlight = null;
 chrome.storage.local.get({ token: '', sttHost: '', sttPort: 8765 }, (v) => {
   tokenEl.value = v.token || '';
   if (portEl) portEl.value = Number(v.sttPort) || 8765;
   rebuildServer(v.sttHost, v.sttPort);
+  storageReady = true;
   checkServer();
 });
 tokenEl.addEventListener('change', () => {
@@ -306,11 +330,37 @@ chrome.storage.local.get(
     ttsDebugEl.checked = v.ttsDebug === true;
     ttsVoiceEl.value = v.ttsVoice || '';
     fillVoices(v.ttsVoice || '');
-    fillServerVoices(v.ttsServerVoice || '');
+    // Серверный каталог — только после готовности URL, иначе уходим на дефолт
+    // (успешная проверка всё равно обновит; applyUiLang тоже дёргает проверку).
+    if (storageReady) fillServerVoices(v.ttsServerVoice || '');
+    if (typeof applyTtsEngineVisibility === 'function') applyTtsEngineVisibility();
   }
 );
 ttsEl.addEventListener('change', () => chrome.storage.local.set({ tts: ttsEl.checked }));
-ttsEngineEl.addEventListener('change', () => chrome.storage.local.set({ ttsEngine: ttsEngineEl.value }));
+ttsEngineEl.addEventListener('change', () => {
+  chrome.storage.local.set({ ttsEngine: ttsEngineEl.value });
+  applyTtsEngineVisibility();
+});
+
+// Настройки делим по движку: браузерные видны только при engine=browser,
+// серверные — только при engine=server. Общие (режим, язык, скорость,
+// отладка) показываем всегда.
+function applyTtsEngineVisibility() {
+  const isServer = (ttsEngineEl.value || 'browser') === 'server';
+  const show = (id, visible) => {
+    const input = document.getElementById(id);
+    const label = input && input.closest('label');
+    if (label) label.style.display = visible ? '' : 'none';
+  };
+  show('ttsVoice', !isServer);
+  show('ttsLocalOnly', !isServer);
+  show('ttsServerEngine', isServer);
+  show('ttsServerVoice', isServer);
+  // Скорость: браузер и Piper применяют rate, Silero игнорирует — при нём прячем.
+  let srvEngine = '';
+  try { srvEngine = typeof currentServerEngine === 'string' ? currentServerEngine : ''; } catch { srvEngine = ''; }
+  show('ttsRate', !isServer || srvEngine !== 'silero');
+}
 ttsModeEl.addEventListener('change', () => chrome.storage.local.set({ ttsMode: ttsModeEl.value }));
 ttsLangEl.addEventListener('change', () => chrome.storage.local.set({ ttsLang: ttsLangEl.value }));
 ttsLocalOnlyEl.addEventListener('change', () => chrome.storage.local.set({ ttsLocalOnly: ttsLocalOnlyEl.checked }));
@@ -318,9 +368,108 @@ ttsRateEl.addEventListener('input', () => {
   ttsRateVal.textContent = Number(ttsRateEl.value).toFixed(1);
   chrome.storage.local.set({ ttsRate: Number(ttsRateEl.value) });
 });
-ttsDebugEl.addEventListener('change', () => chrome.storage.local.set({ ttsDebug: ttsDebugEl.checked }));
+ttsDebugEl.addEventListener('change', () => {
+  chrome.storage.local.set({ ttsDebug: ttsDebugEl.checked });
+  if (typeof refreshTtsStatus === 'function') void refreshTtsStatus();
+});
 ttsVoiceEl.addEventListener('change', () => chrome.storage.local.set({ ttsVoice: ttsVoiceEl.value }));
 ttsServerVoiceEl.addEventListener('change', () => chrome.storage.local.set({ ttsServerVoice: ttsServerVoiceEl.value }));
+
+// Движок серверного синтеза (POST /engine с перезапуском). Текущий движок —
+// из /health; каталог голосов зависит от движка и перечитывается после рестарта.
+const ttsServerEngineEl = document.getElementById('ttsServerEngine');
+const KNOWN_TTS_ENGINES = ['piper', 'silero'];
+function fillTtsEngine(current) {
+  if (!ttsServerEngineEl) return;
+  const cur = current || '';
+  currentServerEngine = cur;
+  refreshServerVoiceLabel();
+  // От движка зависит видимость скорости (Silero игнорирует rate).
+  if (typeof applyTtsEngineVisibility === 'function') applyTtsEngineVisibility();
+  ttsServerEngineEl.innerHTML = '';
+  const list = (!cur || KNOWN_TTS_ENGINES.includes(cur)) ? KNOWN_TTS_ENGINES : [...KNOWN_TTS_ENGINES, cur];
+  for (const n of list) {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n;
+    ttsServerEngineEl.appendChild(o);
+  }
+  ttsServerEngineEl.value = cur;
+  ttsServerEngineEl.disabled = !cur;
+}
+if (ttsServerEngineEl) ttsServerEngineEl.addEventListener('change', async () => {
+  const e = ttsServerEngineEl.value;
+  if (!e) return;
+  ttsServerEngineEl.disabled = true;
+  statusEl.textContent = t('healingServer');
+  statusEl.className = 'status';
+  try {
+    const res = await fetch(`${STT_SERVER}/engine`, {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ engine: e }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    await waitForServer(90000);
+  } catch (err) {
+    statusEl.textContent = t('engineSwitchFail', { err: err.message });
+    statusEl.className = 'status error';
+    try { await checkServer(); } catch {}
+  } finally {
+    ttsServerEngineEl.disabled = false;
+  }
+});
+
+// STT-модель сервера (переключение через POST /model с перезапуском).
+const sttModelEl = document.getElementById('sttModel');
+const KNOWN_STT_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v3-q5_0'];
+function modelName(file) {
+  return String(file || '').replace(/^ggml-/, '').replace(/\.bin$/, '');
+}
+// Список — только модели, установленные на сервере (info.models из /health).
+// Нет файла — нет пункта: битые варианты выбрать нельзя в принципе.
+function fillSttModel(current, available) {
+  if (!sttModelEl) return;
+  const cur = current || '';
+  sttModelEl.innerHTML = '';
+  const list = Array.isArray(available) && available.length ? available : KNOWN_STT_MODELS;
+  const names = (!cur || list.includes(cur)) ? list : [...list, cur];
+  for (const n of names) {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n;
+    sttModelEl.appendChild(o);
+  }
+  sttModelEl.value = cur;
+  sttModelEl.disabled = !cur;
+}
+if (sttModelEl) sttModelEl.addEventListener('change', async () => {
+  const m = sttModelEl.value;
+  if (!m) return;
+  sttModelEl.disabled = true;
+  statusEl.textContent = t('healingServer');
+  statusEl.className = 'status';
+  try {
+    const res = await fetch(`${STT_SERVER}/model`, {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ model: m }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    // Перезапуск быстрый (whisper.cpp грузит модель на каждый запрос).
+    await waitForServer(90000);
+  } catch (err) {
+    statusEl.textContent = t('modelSwitchFail', { err: err.message });
+    statusEl.className = 'status error';
+    // Сразу откатываем селект на реально применённую модель, а не ждём
+    // следующего открытия popup.
+    try { await checkServer(); } catch {}
+  } finally {
+    sttModelEl.disabled = false;
+  }
+});
 
 // Тест озвучки: просим content-скрипт активной вкладки произнести фразу —
 // так отделяем проблему синтеза от проблемы событий/DOM.
@@ -345,9 +494,28 @@ ttsTestBtn.addEventListener('click', async () => {
 });
 
 // Статус TTS с активной вкладки — быстрый способ диагностики без DevTools.
+// Полное полотно (события, строки, хвост лога) — только с галочкой отладки;
+// без неё — одна короткая строка состояния.
 async function refreshTtsStatus() {
   const el = document.getElementById('ttsStatus');
   if (!el) return;
+  let dbg = false;
+  try {
+    dbg = await new Promise((r) => {
+      try { chrome.storage.local.get({ ttsDebug: false }, (v) => r(v.ttsDebug === true)); }
+      catch { r(false); }
+    });
+  } catch { dbg = false; }
+  if (!dbg) {
+    try {
+      const v = await new Promise((r) => {
+        try { chrome.storage.local.get({ tts: false, ttsEngine: 'browser' }, r); }
+        catch { r({}); }
+      });
+      el.textContent = (v && v.tts) ? t('ttsOn', { engine: (v.ttsEngine || 'browser') }) : t('ttsOff');
+    } catch { el.textContent = ''; }
+    return;
+  }
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id) { el.textContent = t('noTab'); return; }
@@ -374,8 +542,41 @@ beepTestBtn.addEventListener('click', async () => {
 });
 
 async function checkServer() {
+  // Настройки (порт/хост) ещё не прочитаны — проверять нечего (иначе уходим
+  // на дефолтный URL и статус мигает красно-зелёным при открытии popup).
+  if (!storageReady) return;
+  // Single-flight: параллельные проверки (открытие popup дёргает несколько)
+  // не ходят в сеть толпой — вторая ждёт первую и показывает её результат.
+  if (checkInFlight) {
+    try { await checkInFlight; } catch {}
+    return;
+  }
+  checkInFlight = (async () => {
   try {
-    const res = await fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() });
+    let res = null;
+    try {
+      res = await fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() });
+    } catch { res = null; }
+    if (!res) {
+      // Запасной путь через loopback: sttHost в хранилище протухает, когда
+      // вкладки OpenCode открыты то по localhost, то по LAN-IP (content.js
+      // перезаписывает хост при каждой загрузке). 127.0.0.1 чинит это молча.
+      const port = String(STT_SERVER.split(':').pop() || '8765').replace(/\D/g, '') || '8765';
+      const fb = `http://127.0.0.1:${port}`;
+      if (fb !== STT_SERVER) {
+        try {
+          const r2 = await fetch(`${fb}/health`, { method: 'GET', headers: authHeaders() });
+          if (r2) {
+            res = r2;
+            if (r2.ok) {
+              STT_SERVER = fb;
+              try { chrome.storage.local.set({ sttHost: '127.0.0.1' }); } catch {}
+            }
+          }
+        } catch { /* ниже — штатная ошибка */ }
+      }
+    }
+    if (!res) throw new Error('Failed to fetch');
     if (res.ok) {
       let info = {};
       try { info = await res.json(); } catch {}
@@ -387,6 +588,11 @@ async function checkServer() {
         vEl.textContent = t('versions', { ext: extV, ver: info.version || '?', backend: info.backend || '?', device: info.device || '?' });
       }
       testBtn.disabled = false;
+      // Голоса могли грузиться раньше, чем был готов URL (гонка колбэков
+      // при открытии popup) — обновляем по успешной проверке.
+      if (typeof fillServerVoices === 'function') void fillServerVoices();
+      if (typeof fillSttModel === 'function') fillSttModel(modelName(info.model), info.models);
+      if (typeof fillTtsEngine === 'function') fillTtsEngine(info.tts && info.tts.engine);
     } else {
       throw new Error(`HTTP ${res.status}`);
     }
@@ -396,9 +602,15 @@ async function checkServer() {
       statusEl.className = 'status';
       return;
     }
-    statusEl.textContent = t('statusDown', { err: err.message });
+    statusEl.textContent = t('statusDown', { err: err.message, url: STT_SERVER });
     statusEl.className = 'status error';
     testBtn.disabled = true;
+  }
+  })();
+  try {
+    await checkInFlight;
+  } finally {
+    checkInFlight = null;
   }
 }
 
@@ -426,7 +638,7 @@ testBtn.addEventListener('click', async () => {
     statusEl.textContent = t('testOk', { text: result.text || t('emptyResp') });
     statusEl.className = 'status ok';
   } catch (err) {
-    statusEl.textContent = t('testErr', { err: err.message });
+    statusEl.textContent = t('testErr', { err: err.message, url: STT_SERVER });
     statusEl.className = 'status error';
   } finally {
     testBtn.textContent = t('sttTest');

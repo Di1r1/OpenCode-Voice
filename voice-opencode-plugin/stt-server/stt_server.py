@@ -235,7 +235,12 @@ def _tts_voices_dir() -> str:
 
 
 def _tts_allowed_voices() -> list:
-    """Whitelist голосов: имена *.onnx в каталоге (никаких путей из запроса)."""
+    """Whitelist голосов: имена *.onnx в каталоге (никаких путей из запроса).
+
+    Для Silero каталог не нужен — фиксированный список спикеров v4_ru.
+    """
+    if TTS_ENGINE == "silero":
+        return list(_SILERO_SPEAKERS)
     try:
         return sorted(p[:-5] for p in os.listdir(_tts_voices_dir()) if p.endswith(".onnx"))
     except Exception:
@@ -246,8 +251,98 @@ def _tts_voice_file(voice: str) -> str:
     return os.path.join(_tts_voices_dir(), voice + ".onnx")
 
 
+# Silero: локальный движок (torch CPU + v4_ru.pt). Качество русской речи выше,
+# чем у Piper medium (у которого для ru_RU вообще нет high). Спикеры v4_ru.
+_SILERO_SPEAKERS = ("aidar", "baya", "eugene", "kseniya", "xenia")
+_SILERO_SAMPLE_RATE = 48000
+_SILERO_DEFAULT_SPEAKER = "kseniya"
+
+_silero_model = None
+_silero_lock = threading.Lock()
+
+
+def _tts_silero_model_file() -> str:
+    return os.getenv("OPENCODE_VOICE_TTS_SILERO_MODEL") or os.path.join(_tts_home(), "v4_ru.pt")
+
+
+def _tts_silero_load():
+    """Ленивая загрузка v4_ru.pt (torch CPU). Возвращает модель или None."""
+    global _silero_model
+    with _silero_lock:
+        if _silero_model is not None:
+            return _silero_model
+        try:
+            import torch
+        except ImportError:
+            logger.warning("silero: нет torch (pip install torch --index-url .../cpu)")
+            return None
+        path = _tts_silero_model_file()
+        if not os.path.exists(path):
+            logger.warning("silero: нет модели %s (setup.sh --tts)", path)
+            return None
+        try:
+            _silero_model = torch.package.PackageImporter(path).load_pickle("tts_models", "model")
+            _silero_model.to(torch.device("cpu"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("silero: не загрузилась модель: %s", e)
+            return None
+        return _silero_model
+
+
+def _tts_silero_synthesize(text: str, voice: str, out_path: str):
+    """Синтез через Silero (48 кГц mono). Rate не поддерживается — игнорируется."""
+    model = _tts_silero_load()
+    if model is None:
+        return False, "silero unavailable (torch/model)"
+    try:
+        audio = model.apply_tts(text=text, speaker=voice, sample_rate=_SILERO_SAMPLE_RATE)
+    except Exception as e:  # noqa: BLE001
+        return False, f"silero synthesis failed: {e}"
+    try:
+        import numpy as np
+        pcm = np.clip(np.asarray(audio.numpy() if hasattr(audio, "numpy") else audio,
+                                dtype=np.float32), -1.0, 1.0)
+        frames = (pcm * 32767).astype(np.int16).tobytes()
+    except Exception as e:  # noqa: BLE001
+        return False, f"silero pcm failed: {e}"
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with wave.open(out_path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(_SILERO_SAMPLE_RATE)
+            w.writeframes(frames)
+    except Exception as e:  # noqa: BLE001
+        return False, f"silero write failed: {e}"
+    return True, None
+
+
+def _tts_default_voice() -> str:
+    """Дефолтный голос движка (когда в запросе пусто).
+
+    TTS_VOICE из SPEC (ru_RU-irina-medium) — голос Piper; для Silero он
+    чужой, поэтому откатываемся на спикера движка.
+    """
+    allowed = _tts_allowed_voices()
+    if TTS_VOICE and (not allowed or TTS_VOICE in allowed):
+        return TTS_VOICE
+    if TTS_ENGINE == "silero":
+        return _SILERO_DEFAULT_SPEAKER
+    return TTS_VOICE
+
+
 def _tts_available() -> bool:
-    if not TTS_ENABLED or TTS_ENGINE != "piper":
+    if not TTS_ENABLED:
+        return False
+    if TTS_ENGINE == "silero":
+        if not os.path.exists(_tts_silero_model_file()):
+            return False
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            return False
+        return True
+    if TTS_ENGINE != "piper":
         return False
     binp = _tts_piper_bin()
     if os.getenv("OPENCODE_VOICE_TTS_BIN"):
@@ -346,6 +441,8 @@ def _tts_synthesize(text: str, voice: str, rate: float, out_path: str):
     override = os.getenv("OPENCODE_VOICE_TTS_BIN", "")
     if override:
         cmd = [override, out_path]  # контракт fake-piper: <bin> <out.wav>, текст на stdin
+    elif TTS_ENGINE == "silero":
+        return _tts_silero_synthesize(text, voice, out_path)
     else:
         cmd = [_tts_piper_bin(), "--model", _tts_voice_file(voice), "--output_file", out_path]
         if abs(rate - 1.0) > 1e-6:
@@ -536,7 +633,7 @@ model = None
 MODEL_SIZE = _default_model_size()
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
-SERVER_VERSION = "0.4.1"
+SERVER_VERSION = "0.4.2"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
 FT_MODEL = _default_model_size()
@@ -1499,6 +1596,82 @@ def heal_route():
     })
 
 
+@app.route("/model", methods=["POST"])
+def model_route():
+    """Смена STT-модели на лету: проверяет файл и перезапускает процесс.
+
+    Тело: {"model": "medium" | "large-v3-q5_0" | ...} — имя подставляется
+    в <whisperDir>/ggml-<name>.bin, файл обязан существовать (защита от
+    path traversal: только basename из безопасного алфавита).
+    Новый процесс наследует os.environ (execv), поэтому заданный
+    WHISPER_CPP_MODEL подхватывается без правок конфигов.
+    """
+    if _rate_limited("model"):
+        return jsonify({"error": "rate limited"}), 429
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("model", "")).strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        return jsonify({"status": "error", "error": "bad model name"}), 400
+    candidate = os.path.join(_whisper_dir(), f"ggml-{name}.bin")
+    # realpath обязан остаться внутри каталога моделей (на случай .. и ссылок).
+    try:
+        real = os.path.realpath(candidate)
+        if os.path.dirname(real) != os.path.realpath(_whisper_dir()):
+            raise ValueError("outside model dir")
+    except ValueError:
+        return jsonify({"status": "error", "error": "bad model name"}), 400
+    if not os.path.isfile(real):
+        return jsonify({"status": "error", "error": f"model file not found: ggml-{name}.bin"}), 400
+    os.environ["WHISPER_CPP_MODEL"] = real
+    _restart_soon()
+    _log_request("model", f"switch to {os.path.basename(real)}")
+    return jsonify({
+        "status": "ok",
+        "restarting": True,
+        "model": os.path.basename(real),
+        "version": SERVER_VERSION,
+    })
+
+
+def _available_stt_models() -> list:
+    """Модели, которые реально можно выбрать: файлы ggml-*.bin в каталоге."""
+    try:
+        d = _whisper_dir()
+        return sorted(p[5:-4] for p in os.listdir(d)
+                      if p.startswith("ggml-") and p.endswith(".bin")
+                      and os.path.isfile(os.path.join(d, p)))
+    except Exception:
+        return []
+
+
+_TTS_ENGINES = ("piper", "silero")
+
+
+@app.route("/engine", methods=["POST"])
+def engine_route():
+    """Смена TTS-движка на лету (piper|silero) с перезапуском процесса.
+
+    Новый процесс наследует os.environ (execv). Каталог голосов (/voices)
+    и дефолтный голос зависят от движка — popup перечитывает их после рестарта.
+    """
+    if _rate_limited("engine"):
+        return jsonify({"error": "rate limited"}), 429
+    data = request.get_json(silent=True) or {}
+    engine = str(data.get("engine", "")).strip().lower()
+    if engine not in _TTS_ENGINES:
+        return jsonify({"status": "error",
+                        "error": f"unknown engine (want one of {list(_TTS_ENGINES)})"}), 400
+    os.environ["OPENCODE_VOICE_TTS_ENGINE"] = engine
+    _restart_soon()
+    _log_request("engine", f"switch to {engine}")
+    return jsonify({
+        "status": "ok",
+        "restarting": True,
+        "engine": engine,
+        "version": SERVER_VERSION,
+    })
+
+
 @app.route("/health", methods=["GET"])
 def health():
     # Бэкенд может быть ещё не разрешён (если main() не выполнялся) — считаем его здесь.
@@ -1508,6 +1681,7 @@ def health():
         "version": SERVER_VERSION,
         "backend": backend,
         "model": MODEL_SIZE,
+        "models": _available_stt_models(),
         "device": "cuda" if (backend == "whispercpp" and _cuda_available()) else DEVICE,
         "recorder": _record_probe_cmd(),
         "pulse_server": os.getenv("PULSE_SERVER", ""),
@@ -1564,7 +1738,7 @@ def speak_route():
         return jsonify({"status": "error", "error": "no text provided"}), 400
 
     mode = str(payload.get("mode") or TTS_MODE).strip().lower()
-    voice = str(payload.get("voice") or TTS_VOICE).strip()
+    voice = str(payload.get("voice") or _tts_default_voice()).strip()
     try:
         rate = float(payload.get("rate", TTS_RATE))
     except (TypeError, ValueError):
@@ -1617,7 +1791,7 @@ def voices_route():
     return jsonify({
         "status": "ok",
         "engine": TTS_ENGINE,
-        "default": TTS_VOICE,
+        "default": _tts_default_voice(),
         "voices": _tts_allowed_voices(),
         "enabled": TTS_ENABLED,
         "available": _tts_available(),

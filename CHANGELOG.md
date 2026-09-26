@@ -10,6 +10,60 @@ Version in code: `PLUGIN_VERSION` (`voice-opencode-plugin/src/lib/config.ts`), `
 (`voice-opencode-plugin/stt-server/stt_server.py`), `package.json` and `/health` (field `version`).
 The Chrome extension is versioned independently (`voice-opencode-plugin/extension/manifest.json`).
 
+## [0.4.2] - 2026-09-26
+
+### Added
+- **STT model switching at runtime:** `POST /model {"model": "<name>"}` validates
+  `ggml-<name>.bin`, sets `WHISPER_CPP_MODEL` and respawns (env is inherited via
+  `execv`); `/health` now lists installed models (`models: [...]`, e.g.
+  `large-v3-q5_0`, `medium`, `small`); popup got a «Модель распознавания» selector
+  showing only installed models with instant revert on failure.
+- **Silero TTS engine (torch CPU + `v4_ru.pt`):** alternative to Piper, better RU
+  quality (Piper has no `high` for `ru_RU`); speakers aidar/baya/eugene/kseniya/xenia;
+  `POST /engine {"engine": "piper"|"silero"}` switches with restart; `/voices` and
+  `/health` are engine-aware (incl. per-engine default voice); popup got a
+  «Движок сервера» selector; `setup.sh --tts` also fetches `v4_ru.pt` (~40 МБ).
+- **Configurable server port:** popup «Порт сервера» field (`chrome.storage`,
+  default 8765); `content.js`/`tts.js` follow port changes live (no F5; TTS URL is
+  now resolved per request); server/launcher/`doctor.sh` via `OPENCODE_VOICE_PORT`.
+  Needed when Windows Hyper-V reserves 8765 (`netsh … show excludedportrange`).
+- **URL in popup errors:** `statusDown`/`testErr` now include the server URL, so
+  «Failed to fetch» reports are instantly diagnostic.
+
+### Fixed
+- **Silent server death on busy port:** duplicate spawn exits(2) immediately when a
+  live server answers `/health`; after 40 retries the process exits(1) with a
+  WinNAT/Hyper-V hint instead of dying silently (was: 6 МБ спама, 47 запусков).
+- **`doctor.sh --fix` really restarts:** starts the server directly instead of only
+  waiting for the watchdog; detects phantom-blocked ports (bind fails, nobody listens).
+- **Popup heal:** waits 150 s (was 60 s) and points to `/voice heal` when the server
+  is dead (a browser cannot spawn processes).
+- **`/voice heal` tells the truth:** verifies `/health` after repair (probe is
+  injectable, so heal tests are hermetic again — no 60 s real-server waits).
+- **Debug-log checkbox (`ttsDebug`) now gates the console:** `content.js log()` is
+  silent without it (live toggle, no reload); real errors still go via `console.error`.
+- **Server voice label follows the engine:** «Голос сервера (Silero/Piper)» updates
+  on every health check and survives UI language switches.
+
+### Fixed (popup UX, ext `1.0.43`–`1.0.47`)
+- **Debug panel respects the checkbox:** the TTS status dump (`gate/sse/events/…`
+  + log tail) rendered on every popup open; now only a one-line state without
+  `ttsDebug`, full dump with it (live toggle).
+- **Settings grouped by engine:** browser-only (browser voice, local-only) and
+  server-only (server engine/voice) settings hide when irrelevant; speed slider
+  additionally hides on Silero (it ignores `rate`; Piper applies it).
+- **Stale-host self-healing:** `content.js` rewrote the stored host on every page
+  load, so the popup URL flip-flopped between localhost and LAN tabs; on network
+  failure the popup now retries via `127.0.0.1` and adopts it on success.
+- **Status flicker on open:** three parallel callbacks raced `checkServer`, the
+  first hitting the default URL; checks are now gated on loaded settings and
+  single-flight (one network request per open).
+- **Dynamic server-voice label:** «Голос сервера (Silero/Piper)» follows the
+  engine from `/health` and survives UI language switches.
+
+### Changed
+- Extension `1.0.34` → `1.0.47`; server `0.4.1` → `0.4.2`.
+
 ## [0.4.1] - 2026-09-20
 
 ### Fixed

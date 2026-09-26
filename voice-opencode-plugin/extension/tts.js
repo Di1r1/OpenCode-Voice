@@ -196,7 +196,11 @@
     var log = deps.log || function () {};
     var toast = deps.toast || function () {};
     var getPhase = deps.getPhase || function () { return "idle"; };
-    var serverUrl = String(deps.serverUrl || "").replace(/\/+$/, "");
+    // serverUrl может быть функцией (актуальный URL на момент запроса):
+    // порт сервера меняют в popup уже после инициализации.
+    var getServerUrl = typeof deps.serverUrl === "function"
+      ? deps.serverUrl
+      : function () { return String(deps.serverUrl || "").replace(/\/+$/, ""); };
     var authHeaders = deps.authHeaders || function () { return {}; };
     var settings = Object.assign({}, DEFAULTS);
     var logTail = [];
@@ -414,7 +418,7 @@
     }
 
     function speak(text) {
-      if (settings.ttsEngine === "server" && serverUrl) { speakServer(text); return; }
+      if (settings.ttsEngine === "server" && getServerUrl()) { speakServer(text); return; }
       speakBrowser(text);
     }
 
@@ -616,7 +620,7 @@
         var serverVoice = settings.ttsServerVoice || settings.ttsVoice;
         if (serverVoice) payload.voice = serverVoice;
         if (settings.ttsLang !== "auto") payload.lang = settings.ttsLang;
-        return win.fetch(serverUrl + "/speak", {
+        return win.fetch(getServerUrl() + "/speak", {
           method: "POST",
           // authHeaders() от content.js несёт X-Voice-Source: button — наш tts
           // должен побеждать, поэтому спредим его первым.

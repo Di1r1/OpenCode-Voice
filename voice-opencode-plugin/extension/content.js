@@ -16,19 +16,34 @@ const STT_HOST = location.hostname === 'localhost' ? '127.0.0.1' : location.host
 let STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
 // Запоминаем хост, чтобы popup ходил на тот же сервер (важно при доступе по LAN/IP).
 try { chrome.storage.local.set({ sttHost: STT_HOST }); } catch {}
+function applyPort(p) {
+  const port = Number(p) || DEFAULT_STT_PORT;
+  if (port !== STT_PORT) {
+    STT_PORT = port;
+    STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
+  }
+}
 try {
-  chrome.storage.local.get({ sttPort: DEFAULT_STT_PORT }, (v) => {
-    const p = Number(v.sttPort) || DEFAULT_STT_PORT;
-    if (p !== STT_PORT) {
-      STT_PORT = p;
-      STT_SERVER = `${location.protocol}//${STT_HOST}:${STT_PORT}`;
-    }
+  chrome.storage.local.get({ sttPort: DEFAULT_STT_PORT }, (v) => applyPort(v.sttPort));
+  // Порт меняют в popup уже после загрузки страницы — подхватываем без F5.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.sttPort) applyPort(changes.sttPort.newValue);
   });
 } catch {}
 const LOG_PREFIX = '[OpenCode Voice]';
 
+// «Лог в консоль (отладка)» из popup: без галочки — тихо, ошибки идут
+// через console.error и видны всегда.
+let debugLog = false;
+try {
+  chrome.storage.local.get({ ttsDebug: false }, (v) => { debugLog = v.ttsDebug === true; });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.ttsDebug) debugLog = changes.ttsDebug.newValue === true;
+  });
+} catch {}
+
 function log(...args) {
-  console.log(LOG_PREFIX, ...args);
+  if (debugLog) console.log(LOG_PREFIX, ...args);
 }
 
 function showToast(message, type = 'info', duration = 3000) {
@@ -260,7 +275,7 @@ async function startCapture() {
       log('Запись: микрофон браузера');
       return { mode: 'browser', stream, recorder, chunks };
     } catch (e) {
-      log('Микрофон браузера недоступен:', e.name, e.message);
+      console.error(LOG_PREFIX, 'Микрофон браузера недоступен:', e.name, e.message);
     }
   }
 
@@ -516,7 +531,7 @@ async function runRecordingFlow(btn) {
       log('Сервер уже пишет — переключаюсь в режим остановки');
       captureSession = { mode: 'server' };
     } else {
-      log('Error:', err);
+      console.error(LOG_PREFIX, 'Error:', err);
       showToast(`❌ Не удалось начать запись: ${err.message}`, 'error', 6000);
       uiPhase = 'idle';
       applyButtonState(btn);
@@ -573,7 +588,7 @@ async function runRecordingFlow(btn) {
       showToast('Речь не распознана', 'warning');
     }
   } catch (err) {
-    log('Error:', err);
+    console.error(LOG_PREFIX, 'Error:', err);
     showToast(`❌ Ошибка: ${err.message}`, 'error', 6000);
   } finally {
     captureSession = null;
@@ -608,7 +623,7 @@ function addVoiceButton() {
       parent.appendChild(btn);
     }
   } catch (err) {
-    log('Toolbar placement failed, fell back to form:', err);
+    console.error(LOG_PREFIX, 'Toolbar placement failed, fell back to form:', err);
     const container = findContainer(input);
     container.appendChild(btn);
   }
@@ -650,19 +665,21 @@ try {
       getPhase: () => uiPhase,
       toast: showToast,
       log,
-      serverUrl: STT_SERVER,
+      // Функция, а не строка: storage с портом читается асинхронно, а порт
+      // могут поменять в popup уже после инициализации TTS.
+      serverUrl: () => STT_SERVER,
       authHeaders,
     });
   }
 } catch (err) {
-  log('TTS init failed', err);
+  console.error(LOG_PREFIX, 'TTS init failed', err);
 }
 
 // Диагностика: подтверждаем, что загружена именно эта версия (видно в консоли
 // страницы и в логе STT-сервера как beep freq=0).
 void tokenReady.then(() => {
   try {
-    console.log('[OpenCode Voice] content.js v1.0.36 loaded');
+    console.log('[OpenCode Voice] content.js v1.0.47 loaded');
     fetch(`${STT_SERVER}/beep?freq=0`, { method: 'GET', headers: authHeaders() }).catch(() => {});
     fetch(`${STT_SERVER}/health`, { method: 'GET', headers: authHeaders() })
       .then((r) => r.json())

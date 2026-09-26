@@ -360,6 +360,19 @@ if [ "$DO_TTS" = "1" ]; then
     done
   done
 
+  # Silero: альтернативный движок (torch CPU + v4_ru.pt). Качество русской речи
+  # выше Piper medium; движок выбирается OPENCODE_VOICE_TTS_ENGINE=silero.
+  SILERO_FILE="$TTS_DIR/v4_ru.pt"
+  if [ -s "$SILERO_FILE" ]; then ok "silero уже есть: $SILERO_FILE"; else
+    info "скачиваю Silero v4_ru.pt (~40 МБ)"
+    if curl -fL --retry 3 -o "$SILERO_FILE.part" "https://models.silero.ai/models/tts/ru/v4_ru.pt"; then
+      mv -f "$SILERO_FILE.part" "$SILERO_FILE"; ok "$SILERO_FILE"
+    else
+      rm -f "$SILERO_FILE.part"; warn "не удалось скачать Silero — вручную: https://models.silero.ai/models/tts/ru/v4_ru.pt"
+    fi
+  fi
+  info "движок по умолчанию — Piper; для Silero: export OPENCODE_VOICE_TTS_ENGINE=silero (+ pip install torch --index-url https://download.pytorch.org/whl/cpu)"
+
   echo
   info "серверный TTS выключен по умолчанию — включите переменными ТАМ, откуда стартует OpenCode:"
   echo "    export OPENCODE_VOICE_TTS=1   # сервер читает флаг один раз при старте; heal/вотчдог его не включат"
