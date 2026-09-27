@@ -20,6 +20,7 @@ PULSE_SERVER="${PULSE_SERVER:-unix:/mnt/wslg/PulseServer}"
 export PULSE_SERVER
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG="/tmp/opencode/stt_server.log"
+WHISPER_DIR="${OPENCODE_VOICE_WHISPER_DIR:-${OPENCODE_VOICE_HOME:-$HOME/.local/share/opencode-voice}/whisper}"
 REQ_LOG="/tmp/opencode/voice-requests.log"
 REC_LOG="/tmp/opencode/voice-recognized.log"
 EXT_ORIGIN="chrome-extension://abcdefghijklmnopabcdefghijklmnop"
@@ -120,6 +121,47 @@ if [[ -n "$HEALTH" ]]; then
   fi
 else
   say "$BAD" "health недоступен"
+fi
+
+# 2a) Модель STT против видеопамяти ---------------------------------------------
+# Проверено на GTX 950M (Maxwell, CC 5.0) в WSL: whisper.cpp грузит модель в VRAM
+# ОДНИМ блоком, и чем он крупнее, тем чаще CUDA его не даёт (GGML_ASSERT) —
+# сервер молча уходит на CPU. Порог ~1 ГБ: ниже влезает всегда.
+if [[ -n "$HEALTH" ]]; then
+  STT_LINE="$(python3 - "$HEALTH" <<'PY' 2>/dev/null || true
+import sys, json
+h = json.loads(sys.argv[1])
+print("%s|%s|%s" % (h.get("model", ""), h.get("device", ""), h.get("backend", "")))
+PY
+)"
+  STT_MODEL="${STT_LINE%%|*}"; STT_DEV="${STT_LINE#*|}"; STT_DEV="${STT_DEV%%|*}"
+  STT_BACK="${STT_LINE##*|}"
+  MODEL_MB=0
+  if [[ -n "$STT_MODEL" ]]; then
+    MODEL_FILE="$(ls -1 "$WHISPER_DIR"/"$STT_MODEL" 2>/dev/null | head -1)"
+    [[ -n "$MODEL_FILE" ]] && MODEL_MB=$(( $(stat -c%s "$MODEL_FILE" 2>/dev/null || echo 0) / 1024 / 1024 ))
+  fi
+  VRAM_MB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)"
+  if [[ "$STT_BACK" == "whispercpp" && "$MODEL_MB" -gt 0 ]]; then
+    if (( MODEL_MB > 1024 )); then
+      say "$WARN" "модель ${STT_MODEL} — ${MODEL_MB} МБ: на этой карте (${VRAM_MB:-?}) МБ VRAM крупные модели лотереят (WSL+Maxwell) — часть распознаваний тихо уйдёт на CPU (медленно). Стабильнее medium-q5_0 / small-q8_0."
+      issues+=("stt-model-vram")
+    else
+      say "$OK" "модель ${STT_MODEL} — ${MODEL_MB} МБ: влезает в VRAM (${VRAM_MB:-?}) МБ стабильно"
+    fi
+  fi
+  # Сколько раз сервер уже откатился на CPU — накопительный признак проблемы.
+  if [[ -f "$LOG" ]]; then
+    FB_TOTAL="$(grep -ac 'whisper.cpp недоступен' "$LOG" 2>/dev/null || echo 0)"
+    FB_LAST10="$(tail -400 "$LOG" 2>/dev/null | grep -ac 'whisper.cpp недоступен' || true)"
+    if [[ "${FB_TOTAL:-0}" -gt 0 ]]; then
+      say "…" "откатов whisper.cpp→CPU всего: ${FB_TOTAL} (в последних 400 строках лога: ${FB_LAST10:-0})"
+      if [[ "${FB_LAST10:-0}" -ge 3 ]]; then
+        say "$WARN" "откаты идут прямо сейчас — смените модель на medium-q5_0 или small-q8_0"
+        issues+=("stt-gpu-fallback")
+      fi
+    fi
+  fi
 fi
 
 # 2b) TTS (серверный синтез) ------------------------------------------------

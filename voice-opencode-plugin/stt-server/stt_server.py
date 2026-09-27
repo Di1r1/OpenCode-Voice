@@ -459,6 +459,44 @@ def _tts_synthesize(text: str, voice: str, rate: float, out_path: str):
     return True, None
 
 
+# --- Автолечение GPU-откатов ------------------------------------------------
+# На слабых картах (Maxwell + WSL) whisper.cpp периодически не получает блок
+# VRAM: transcribe_file уходит на faster-whisper и остаётся там до рестарта.
+# Считаем серию откатов подряд; на пороге (по умолчанию 2) перезапускаем процесс
+# (возврат к GPU) — настройки не трогаем, модель остаётся выбранной пользователем.
+_FB_STREAK = 0
+_FB_STREAK_LIMIT = int(os.getenv("OPENCODE_VOICE_FB_STREAK", "2"))
+_FB_HEAL_PAUSE = float(os.getenv("OPENCODE_VOICE_FB_HEAL_PAUSE", "1.5"))
+# Порог «модель крупнее 1 ГБ — риск откатов» (проверено на GTX 950M).
+_FB_RISK_MB = int(os.getenv("OPENCODE_VOICE_MODEL_RISK_MB", "1024"))
+
+
+def _model_risk_mb() -> int:
+    """Размер текущей ggml-модели в МБ (0, если неизвестна)."""
+    try:
+        p = os.path.join(_whisper_dir(), os.path.basename(WHISPER_CPP_MODEL))
+        return os.path.getsize(p) // (1024 * 1024)
+    except Exception:
+        return 0
+
+
+def _note_fallback() -> int:
+    """Счётчик откатов + авто-рестарт на пороге серии. Возвращает streak."""
+    global _FB_STREAK
+    _FB_STREAK += 1
+    logger.warning("GPU-откат #%d подряд (модель %s)", _FB_STREAK, os.path.basename(WHISPER_CPP_MODEL))
+    if _FB_STREAK >= _FB_STREAK_LIMIT > 0:
+        logger.warning(
+            "серия откатов %d — перезапускаю процесс, чтобы вернуться на GPU "
+            "(модель не меняю; лимит OPENCODE_VOICE_FB_STREAK)", _FB_STREAK)
+        _FB_STREAK = 0
+        try:
+            _restart_soon(_FB_HEAL_PAUSE)
+        except Exception as e:  # pragma: no cover
+            logger.error("авто-рестарт не удался: %s", e)
+    return _FB_STREAK
+
+
 def _rate_limited(kind: str) -> bool:
     """Простой token bucket на IP+эндпоинт (RATE_LIMIT_PER_MIN запросов в минуту)."""
     if RATE_LIMIT_PER_MIN <= 0:
@@ -633,7 +671,7 @@ model = None
 MODEL_SIZE = _default_model_size()
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
-SERVER_VERSION = "0.4.3"
+SERVER_VERSION = "0.4.4"
 
 # Параметры faster-whisper для ленивой загрузки при откате whisper.cpp → CPU.
 FT_MODEL = _default_model_size()
@@ -1040,6 +1078,7 @@ def transcribe_file(path: str) -> dict:
                 "whisper.cpp недоступен (%s) — откат на faster-whisper (CPU)",
                 str(e)[:200],
             )
+            _note_fallback()
             try:
                 _ensure_faster_whisper()
             except Exception as fe:
@@ -1764,6 +1803,9 @@ def health():
         "model": MODEL_SIZE,
         "models": _available_stt_models(),
         "device_mode": _DEVICE_MODE,
+        "gpu_fallback_streak": _FB_STREAK,
+        "model_risk": _model_risk_mb() > _FB_RISK_MB,
+        "model_mb": _model_risk_mb(),
         "device": "cuda" if (backend == "whispercpp" and _cuda_available()) else DEVICE,
         "recorder": _record_probe_cmd(),
         "pulse_server": os.getenv("PULSE_SERVER", ""),

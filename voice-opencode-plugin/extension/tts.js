@@ -147,6 +147,25 @@
     return Math.round(ms);
   }
 
+  // Бюджет ВСЕЙ озвучки (таймер maxTimer). Раньше был плоский ttsMaxSeconds=60 —
+  // в режиме «полностью» длинный ответ обрывался на 60-й секунде. Теперь растёт
+  // от длины текста (~14 симв/с) с запасом; потолок 30 минут на случай зависшего
+  // синтеза. 0 в настройках — таймер выключен совсем.
+  var TOTAL_BUDGET_FLOOR_MS = 60000;
+  var TOTAL_BUDGET_CEIL_MS = 1800000;
+  var MS_PER_CHAR = 70;
+
+  function speechBudget(text, rate, maxSeconds) {
+    var r = Number(rate) || 1.0;
+    if (!(r > 0)) r = 1.0;
+    var chars = String(text == null ? "" : text).length;
+    var ms = (chars * MS_PER_CHAR) / r + TOTAL_BUDGET_FLOOR_MS;
+    if (ms > TOTAL_BUDGET_CEIL_MS) ms = TOTAL_BUDGET_CEIL_MS;
+    var secs = Number(maxSeconds) || 0;
+    if (secs > 0) ms = Math.max(ms, secs * 1000);
+    return Math.round(ms);
+  }
+
   function hashStr(s) {
     var h = 5381;
     for (var i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
@@ -157,14 +176,26 @@
     return String(messageID || "") + ":" + hashStr(String(text || ""));
   }
 
+  // Физическая клавиша для буквы/цифры: не зависит от раскладки (в русской
+  // раскладке e.key у Alt+M — "м", а e.code всегда "KeyM").
+  function comboCode(k) {
+    if (k === "escape") return "Escape";
+    if (k === "space") return "Space";
+    if (k === "enter") return "Enter";
+    if (k.length === 1 && /[a-z]/i.test(k)) return "Key" + k.toUpperCase();
+    if (/^[0-9]$/.test(k)) return "Digit" + k;
+    return "";
+  }
+
   function comboMatches(e, combo) {
     var parts = String(combo || "").toLowerCase().split("+");
     var key = parts.pop();
     var needCtrl = parts.indexOf("ctrl") !== -1;
     var needAlt = parts.indexOf("alt") !== -1;
     var needShift = parts.indexOf("shift") !== -1;
-    var k = String(e.key || "").toLowerCase();
-    var keyOk = k === key || (key === "c" && e.code === "KeyC");
+    var code = comboCode(key);
+    // Сначала физическая клавиша (любая раскладка), затем e.key для небуквенных.
+    var keyOk = (code && e.code === code) || String(e.key || "").toLowerCase() === key;
     return keyOk && !!e.ctrlKey === needCtrl && !!e.altKey === needAlt && !!e.shiftKey === needShift;
   }
 
@@ -180,8 +211,20 @@
     ttsMaxSeconds: 60,
     ttsBriefSentences: 2,
     ttsHotkey: "ctrl+c",
+    ttsMuteHotkey: "alt+m",
     ttsDebug: false
   };
+
+  // Человекочитаемая подпись хоткея для тоста/подсказки ("ctrl+c" -> "Ctrl+C").
+  function hotLabel(combo) {
+    return String(combo || "").split("+").map(function (p) {
+      if (!p) return "";
+      if (p === "ctrl") return "Ctrl";
+      if (p === "alt") return "Alt";
+      if (p === "shift") return "Shift";
+      return p.length === 1 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1);
+    }).filter(Boolean).join("+") || "?";
+  }
 
   // ------------------------------------------------------------------ runtime
 
@@ -221,6 +264,8 @@
     var gateOk = false;
     var source = null;
     var speaking = false;
+    var muted = false; // mute по хоткею (ttsMuteHotkey), не путать с галочкой tts
+    var mutedText = ""; // текст, заглушённый mute — вернём при включении
     var pending = null;
     var spoken = Object.create(null);
     var messages = Object.create(null); // messageID -> { role, completed, order, parts }
@@ -417,7 +462,27 @@
       } catch (e) { return true; }
     }
 
+    function setMuted(on) {
+      muted = !!on;
+      if (muted) {
+        pending = null;
+        stopSpeaking(false);
+        toast("🔇 Озвучка заглушена — " + hotLabel(settings.ttsMuteHotkey) + " вернёт", "info", 2500);
+      } else {
+        toast("🔊 Озвучка включена", "info", 2000);
+        // Возвращаем то, что заглушили (иначе после Alt+M тишина до
+        // следующего ответа — выглядит как «не возвращается»).
+        var back = mutedText;
+        mutedText = "";
+        if (back && hasUserActivation()) {
+          setTimeout(function () { speak(back); }, 250);
+        }
+      }
+      dbg("muted", muted);
+    }
+
     function speak(text) {
+      if (muted) { mutedText = String(text || ""); dbg("muted, hold text"); return; }
       if (settings.ttsEngine === "server" && getServerUrl()) { speakServer(text); return; }
       speakBrowser(text);
     }
@@ -454,7 +519,7 @@
         }
         dbg("speak", { lang: lang, voices: voices.length, voice: voice && voice.name, chunks: chunks.length });
         speaking = true;
-        toast("🔊 Говорю…", "info", 2000);
+        toast("🔊 Говорю… · " + hotLabel(settings.ttsHotkey) + " стоп · " + hotLabel(settings.ttsMuteHotkey) + " mute", "info", 3500);
         var idx = 0;
         var next = function () {
           if (!speaking || idx >= chunks.length) {
@@ -519,8 +584,9 @@
           };
           send(false);
         };
-        var secs = Number(settings.ttsMaxSeconds) || 0;
-        if (secs > 0) maxTimer = setTimeout(function () { stopSpeaking(true); }, secs * 1000);
+        // Бюджет по длине текста; ttsMaxSeconds (>0) — нижняя граница, а не кап.
+        maxTimer = setTimeout(function () { stopSpeaking(true); },
+                              speechBudget(text, settings.ttsRate, settings.ttsMaxSeconds));
         try { if (synth.paused) synth.resume(); } catch (e) {}
         next();
       };
@@ -598,10 +664,11 @@
       var chunks = chunkSentences(text);
       if (!chunks.length) return;
       speaking = true;
-      toast("🔊 Говорю… (сервер)", "info", 2000);
+      toast("🔊 Говорю… (сервер) · " + hotLabel(settings.ttsHotkey) + " стоп · " + hotLabel(settings.ttsMuteHotkey) + " mute", "info", 3500);
       dbg("speak server", { chars: text.length, chunks: chunks.length, voice: settings.ttsServerVoice || settings.ttsVoice || null });
-      var secs = Number(settings.ttsMaxSeconds) || 0;
-      if (secs > 0) maxTimer = setTimeout(function () { stopSpeaking(true); }, secs * 1000);
+      // Бюджет по длине текста; ttsMaxSeconds (>0) — нижняя граница, а не кап.
+      maxTimer = setTimeout(function () { stopSpeaking(true); },
+                            speechBudget(text, settings.ttsRate, settings.ttsMaxSeconds));
       var idx = 0;
       var fallbackRest = function (why, fromIdx) {
         if (!speaking) return;
@@ -662,7 +729,14 @@
     }
 
     function onKeyDown(e) {
-      if (!speaking) return; // Ctrl+C перехватываем только пока идёт речь
+      // Mute работает и когда молчим (иначе нечем было бы включить обратно).
+      if (comboMatches(e, settings.ttsMuteHotkey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMuted(!muted);
+        return;
+      }
+      if (!speaking) return; // стоп перехватываем только пока идёт речь
       if (comboMatches(e, settings.ttsHotkey)) {
         e.preventDefault();
         e.stopPropagation();
@@ -767,8 +841,11 @@
     briefSentences: briefSentences,
     chunkSentences: chunkSentences,
     utteranceBudget: utteranceBudget,
+    speechBudget: speechBudget,
     dedupKey: dedupKey,
     comboMatches: comboMatches,
+    comboCode: comboCode,
+    hotLabel: hotLabel,
     DEFAULTS: DEFAULTS,
     start: start
   };

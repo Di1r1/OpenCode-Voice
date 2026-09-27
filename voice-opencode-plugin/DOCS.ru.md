@@ -1,7 +1,7 @@
 # OpenCode Voice v1 — полная документация
 
 > © 2026 Di1r1 · MIT · https://github.com/Di1r1/OpenCode-Voice
-> Срез: сервер `0.4.2`, расширение `1.0.47`. Язык документа — русский.
+> Срез: сервер `0.4.4`, расширение `1.0.52`. Язык документа — русский.
 
 Локальное голосовое управление OpenCode: надиктовать промпт, распознать файл,
 озвучить ответ. Всё работает офлайн (кроме опционального `api`-бэкенда),
@@ -88,8 +88,28 @@ beep 880 → startPushToTalk (arecord/ffmpeg, mono 16 кГц S16_LE)
 живой SSE `/api/event`), находит видимый `[data-message-id]`, чистит текст
 (`cleanForSpeech`, паритет с `src/lib/text.ts` и Python через `shared/tts-cases.json`)
 и озвучивает: движок `browser` (Web Speech) или `server` (`POST /speak` → WAV).
-Режимы `brief` (первые N предложений) / `full`, дедуп `messageID`+hash, стоп
-`Ctrl+C` только во время речи, пауза пока `uiPhase !== 'idle'`.
+Режимы `brief` (первые N предложений) / `full`, дедуп `messageID`+hash, пауза
+пока `uiPhase !== 'idle'`.
+
+Управление речью (расширение `1.0.50+`):
+
+| Действие | Хоткей (дефолт) | Смысл |
+|---|---|---|
+| Стоп | `Ctrl+C` (`ttsHotkey`, настраивается: Ctrl+C / Alt+C / Esc) | прервать **текущую** речь, не запоминая |
+| Mute | `Alt+M` (`ttsMuteHotkey`) | заглушить всё; повторное нажатие возвращает и **досказывает** заглушённый текст (`mutedText`) |
+
+Оба хоткея не зависят от раскладки: сравнение идёт по физической клавише
+(`e.code` через `comboCode()`), поэтому `Alt+М` работает и в русской раскладке
+(иначе `e.key` дал бы «м», а не «m»). Mute перехватывается и когда молчит — иначе
+включить обратно было бы нечем. В тосте начала речи показывается подсказка с
+актуальными хоткеями: «🔊 Говорю… · Ctrl+C стоп · Alt+M mute».
+
+Ограничение длины речи — **бюджет от текста** (`speechBudget`), а не плоские
+60 секунд: `60 с + 70 мс/символ ÷ rate`, потолок 30 минут (страховка от зависшего
+синтеза). `ttsMaxSeconds`, если задан, — нижняя граница, а не кап. Раньше плоский
+таймер `ttsMaxSeconds=60` обрывал длинный ответ в режиме `full` ровно на минуте.
+Отдельно живёт сторож залипшего utterance (`utteranceBudget`, 10–60 с на чанк) —
+он не режет речь, а перезапускает зависший чанк.
 
 ---
 
@@ -113,6 +133,7 @@ beep 880 → startPushToTalk (arecord/ffmpeg, mono 16 кГц S16_LE)
 | `POST /engine` | `{"engine": "piper"\|"silero"}` + рестарт (наследует env через `execv`) |
 | `POST /heal[?restart=1]` | Сброс зависшей записи + purge tmp; с `restart=1` — рестарт процесса |
 | `POST /device` | `{"device": "auto"\|"gpu"\|"cpu"}` — смена устройства **без рестарта** (см. 3.5); `device_mode` отдаётся в `/health` |
+| `GET /health` (фрагмент) | `model_risk`/`model_mb` — крупнее ~1 ГБ рискованно для слабой VRAM; `gpu_fallback_streak` — серия откатов на CPU |
 | `GET/POST /beep?freq=` | Бип в WSL; `freq=0` — только лог (пинг версии от content.js) |
 
 ### 3.2. Пайплайн транскрибации
@@ -172,7 +193,7 @@ preflight — 401), CORS только для локальных origin + `chrome
   (`FT_DEVICE` дефолт `cpu`, `FT_COMPUTE` дефолт `int8`), `WHISPER_BEAM_SIZE=1`,
   `WHISPER_VAD=1`. CUDA для faster-whisper не используется никогда.
 
-Автоматика (есть, две штуки):
+Автоматика (три штуки):
 1. **Выбор при старте** — GPU, если `libcuda` на месте; иначе CPU. Явного
    `gpu` молча на CPU не роняет (упадёт с ошибкой вместо тихого отката).
 2. **Откат в рантайме** (`transcribe_file`): любая ошибка whisper.cpp (включая
@@ -181,30 +202,46 @@ preflight — 401), CORS только для локальных origin + `chrome
    Размер CPU-модели следует за выбранной ggml (`_fw_size_for_ggml`:
    `large-v3-q5_0` → `large`, `medium-q5_0` → `medium`; при смене выбора —
    перезагрузка, в памяти всегда одна). Первое обращение к новому размеру
-   докачивает его из HuggingFace (~3 ГБ для large). Обратного возврата на GPU
-   нет — залипает на CPU до рестарта. Признак отката в логе + поле `backend`
-   в ответе и `voice-recognized.log`.
+   докачивает его из HuggingFace (~3 ГБ для large). Признак отката: лог +
+   поле `backend` в ответе и в `voice-recognized.log`.
+3. **Автолечение серии откатов** (`_note_fallback`): счётчик `_FB_STREAK`
+   растёт на каждом откате; на пороге `OPENCODE_VOICE_FB_STREAK` (дефолт **2**,
+   `0` = выключить) сервер **сам перезапускает процесс** — это возвращает его на
+   GPU. Модель и настройки не меняются: выбранную пользователем модель он не
+   трогает. `OPENCODE_VOICE_FB_HEAL_PAUSE` (дефолт 1.5 с) — пауза перед
+   рестартом, чтобы отдать `/heal`-ответ. Логи: `GPU-откат #N подряд` и
+   `серия откатов N — перезапускаю процесс`. Текущее значение видно в
+   `/health` → `gpu_fallback_streak` (popup подсвечивает красным), порог риска
+   модели — в `model_risk`/`model_mb` (popup показывает жёлтую плашку).
 
 Как понять, где посчиталось: поле `backend` в ответе (`whispercpp` vs
 `faster-whisper`) и в `voice-recognized.log`; живьём — `nvidia-smi`
-(100%/~1 ГБ на large, ~950 МБ на medium-q5_0 во время инференса, 0 в простое).
+(100%/~1 ГБ на large, ~950 МБ на medium-q5_0, ~520 МБ на small-q8_0 во время
+инференса; 0 в простое).
 
 Переключение на лету (без рестарта): `POST /device` пишет `STT_BACKEND`
-напрямую (`cpu` → `faster-whisper`, `gpu` → `whisper.cpp` с проверкой наличия,
+напрямую (`cpu` → `faster-whisper`, `gpu` → `whispercpp` с проверкой наличия,
 `auto` → автовыбор), `transcribe_file` смотрит его на каждый запрос. В popup —
 селект «Устройство (GPU/CPU)», текущее значение — в `/health` (`device_mode`).
 CPU-модель догружается лениво при первом запросе. Рестарт не нужен (в отличие
 от смены STT-модели и TTS-движка).
 
+Измерено на GTX 950M (CC 5.0) в WSL — частота откатов, 28 откатов на 498
+успешных GPU-распознаваний: `small-q8_0` (264 МБ) — **0**, `medium-q5_0`
+(539 МБ) — 2, `large-v3-q5_0` (1031 МБ) — 6, полный `medium` (1.5 ГБ) — 16.
+Причина: модель грузится в VRAM **одним блоком**, и WSL+Maxwell отдаёт такой
+блок не всегда, даже когда свободно 2+ ГБ. Проверено также `GGML_CUDA_NO_VMM=1`:
+legacy-путь жрёт вдвое больше (3.2 ГБ) и умирает с кодом 10 — хуже, не включаем.
+
 Чего нет (честные пробелы):
-- Нет проверки VRAM: модель больше видеопамяти (или WSL-лимита цельного куска —
-  см. Maxwell ниже) падает с `GGML_ASSERT`, а не откатывается предвидяще.
-- Нет автовозврата на GPU после отката; нет автовыбора кванта под VRAM.
+- Нет предварительной проверки VRAM: крупная модель падает с `GGML_ASSERT`, а не
+  откатывается заранее (лечится предупреждением в popup и докторе).
+- Нет автовыбора кванта под VRAM и молчаливой смены модели (не мешаем выбору
+  пользователя) — только рестарт для возврата на GPU.
 - `faster-whisper` всегда CPU.
-- На GTX 950M (CC 5.0) через WSL проверено: small и medium-q5_0 идут на GPU,
-  полный medium и large(-q5_0) падают при загрузке → тихий CPU-фолбэк.
-  Рекомендованная связка: `medium-q5_0` основная + `large-v3-q5_0` «точным
-  режимом» через селект.
+- Рекомендованная связка: `medium-q5_0` основная (стабильно на GPU), `small-q8_0`
+  для коротких команд (быстрее всех), `large-v3-q5_0` — «точный режим» с
+  ожиданием редких откатов.
 
 ---
 
@@ -254,10 +291,11 @@ Entrypoint `src/index.ts` — хук `command.execute.before` для `/voice` и
 
 Контролы: `uiLang`, `status`, `beeps`, `hotkey`, `sendHotkey`, `tts`,
 `ttsEngine` (browser/server), `ttsMode`, `ttsLang`, `ttsVoice` (голоса ОС),
-`ttsServerEngine` (piper/silero), `ttsServerVoice`, `ttsLocalOnly`, `ttsDebug`,
-`ttsRate` (0.5–2), `ttsStatus` (панель диагностики), `token`, `sttPort`,
-`sttModel`, `sttDevice` (auto/gpu/cpu, без рестарта),
-кнопки `beepTestBtn/ttsTestBtn/testBtn/healBtn/openBtn`, `versions`.
+`ttsServerEngine` (piper/silero), `ttsServerVoice`, `ttsLocalOnly`,
+`ttsStopKey`, `ttsMuteKey`, `ttsDebug`, `ttsRate` (0.5–2), `ttsStatus` (панель
+диагностики), `token`, `sttPort`, `sttModel`, `sttDevice` (auto/gpu/cpu, без
+рестарта), `sttRisk` (плашка предупреждения), кнопки
+`beepTestBtn/ttsTestBtn/testBtn/healBtn/openBtn`, `versions`.
 
 Механика, которую важно знать:
 - URL собирается `rebuildServer(host, port)`; проверки запрещены до чтения
@@ -268,6 +306,9 @@ Entrypoint `src/index.ts` — хук `command.execute.before` для `/voice` и
   списки = только установленное; неудачное переключение мгновенно откатывает UI.
 - Настройки делятся по движку (браузерные прячутся при серверном и наоборот;
   скорость скрыта при Silero — он игнорирует `rate`).
+- `sttRisk`: жёлтая плашка, если `model_risk` (модель крупнее ~1 ГБ → риск
+  CPU-фолбэка на слабой VRAM); при `gpu_fallback_streak > 0` статус красный с
+  пояснением «сервер вернёт GPU после рестарта».
 - Кнопка heal: `POST /heal?restart=1` + ожидание до 150 с; мёртвому серверу —
   честная подсказка про `/voice heal` (браузер процесс поднять не может).
 - Ошибки содержат URL (`…недоступен (http://…): Failed to fetch`).
@@ -275,8 +316,8 @@ Entrypoint `src/index.ts` — хук `command.execute.before` для `/voice` и
 ### 5.3. Хранилище (`chrome.storage.local`)
 
 `uiLang`, `token`, `sttHost`, `sttPort`, `beeps`, `hotkey`, `sendHotkey`,
-`tts/ttsEngine/ttsMode/ttsLang/ttsVoice/ttsServerVoice/ttsLocalOnly/ttsRate/ttsDebug`
-(+ внутренние `ttsMaxSeconds/ttsBriefSentences/ttsHotkey` без UI).
+`tts/ttsEngine/ttsMode/ttsLang/ttsVoice/ttsServerVoice/ttsLocalOnly/ttsRate/ttsDebug/ttsHotkey/ttsMuteHotkey`
+(+ внутренние `ttsMaxSeconds/ttsBriefSentences` без UI).
 Пишет только popup; читают content.js/`tts.js` (живые `onChanged`-подписки).
 
 ---
@@ -294,16 +335,23 @@ Entrypoint `src/index.ts` — хук `command.execute.before` для `/voice` и
 | TTS голос/темп/режим | popup | `ttsServerVoice` → `POST /speak {voice}`; `rate` (не для Silero); `mode=brief\|full` |
 | Токен | popup ↔ сервер | `OPENCODE_VOICE_TOKEN` ↔ поле popup (`X-Voice-Token`) |
 | Восстановление | popup/`/voice` | `POST /heal?restart=1`, `/voice heal`, `doctor.sh --fix` |
+| Стоп озвучки | popup «Стоп озвучки» | `ttsHotkey` (дефолт `ctrl+c`), ловится только во время речи |
+| Mute озвучки | popup «Выключить озвучку» | `ttsMuteHotkey` (дефолт `alt+m`), работает и в тишине; снимание досказывает заглушённый текст |
+| Порог автолечения GPU | env | `OPENCODE_VOICE_FB_STREAK` (дефолт 2 отката подряд → рестарт; `0` = выключить), `OPENCODE_VOICE_FB_HEAL_PAUSE` (1.5 с) |
 
 ---
 
 ## 7. Скрипты
 
 - **`doctor.sh [--fix]`** — диагностика кнопки/микрофона: процесс/порт/`/health`,
-  bind-конфликт (подсказка про WinNAT), CORS-preflight `X-Voice-Source/Token`,
+  bind-конфликт (подсказка про WinNAT), **размер активной STT-модели против VRAM**
+  (⚠️ при >1 ГБ: на слабой карте лотереит, часть распознаваний уйдёт на CPU) и
+  **счётчик откатов** `whisper.cpp→CPU` (общий + в последних 400 строках лога;
+  ⚠️ если идут прямо сейчас), CORS-preflight `X-Voice-Source/Token`,
   зависшая запись, mic-проба (`arecord -D pulse`, 3 с + peak/RMS), свежесть логов.
-  `--fix`: убить/поднять сервер (watchdog → прямой `nohup`, ожидание ~150 с),
-  сброс `/record/*`, `fix-mic.sh`.
+  `--fix`: убить/поднять сервер (сначала ждём штатный watchdog ~30 с, затем прямой
+  `nohup python3 stt_server.py --port`, ожидание ~150 с), сброс `/record/*`,
+  `fix-mic.sh`.
 - **`fix-mic.sh`** — пересоздание RDP-аудиоканала WSLg (рестарт weston+PulseAudio
   через `$WSL_EXE`; Wayland-окна закроются). Не помогло → `wsl --shutdown`.
 - **`setup.sh`** — установка: CPU (дефолт) / `--gpu` (сборка whisper.cpp + CUDA,
@@ -322,9 +370,11 @@ Entrypoint `src/index.ts` — хук `command.execute.before` для `/voice` и
 - `shared/strip-cases.json` (14), `shared/tts-cases.json` (20) — кросс-паритет
   `stripNonSpeech`/`cleanForSpeech` между TS, Python и `tts.js` (через `node:vm`).
 - `test/` (Node, hermetic, fake-`$`/stub-рекордер/whisper): unit-текст/stt/whisper/
-  state/heal + E2E плагина и сервера по HTTP (скип без Flask).
-- `stt-server/tests/test_server.py` (pytest, ~75): health/CORS/токен, transcribe/
-  record, гарды 400/413/429/504, heal/model/engine, TTS+Silero, spec-паритет.
+  state/heal + TTS (включая `speechBudget` и раскладко-независимый `comboMatches`)
+  + E2E плагина и сервера по HTTP (скип без Flask).
+- `stt-server/tests/test_server.py` (pytest, ~84): health/CORS/токен, transcribe/
+  record, гарды 400/413/429/504, heal/model/engine/**device**, автолечение откатов
+  (`test_fallback_streak_*`), TTS+Silero, spec-паритет.
 - CI: `npm ci`, `typecheck`, `sync-plugin.sh --check`, `npm test`, `pytest`.
 
 ---
@@ -338,10 +388,14 @@ Entrypoint `src/index.ts` — хук `command.execute.before` для `/voice` и
 1. **Порт съеден Windows** (`EADDRINUSE`, а `ss` пуст): `netsh interface ipv4 show
    excludedportrange` → админское `net stop/start winnat` или смена
    `OPENCODE_VOICE_PORT` (проверено: 19876 свободен).
-2. **GPU-падения на Maxwell (GTX 950M)**: модели ≥1 ГБ одним куском VRAM через
-   WSL падают (`GGML_ASSERT`, exit 134) — сервер молча уходит на CPU
-   (faster-whisper). Лечится квантованием (`medium-q5_0`, 539 МБ — стабильно на
-   GPU). Признак: `whisper.cpp недоступен … откат на faster-whisper` в логе.
+2. **GPU-падения на Maxwell (GTX 950M)**: модель грузится в VRAM **одним блоком**,
+   и WSL+Maxwell отдаёт такой блок не всегда (`GGML_ASSERT`, exit 134), даже когда
+   свободно 2+ ГБ — сервер уходит на CPU (faster-whisper) и сидит там до рестарта.
+   Измерено: `small-q8_0` 0 откатов, `medium-q5_0` 2, `large-v3-q5_0` 6, полный
+   `medium` 16. Лечится квантованием и автолечением: серия откатов подряд (дефолт
+   2) → сервер сам себя перезапускает и возвращается на GPU. Признак в логе:
+   `GPU-откат #N подряд`; в `/health` — `gpu_fallback_streak`, в popup — красный
+   статус; `GGML_CUDA_NO_VMM=1` делает хуже (3.2 ГБ и код 10), не включать.
 3. **WSL2 без `/dev/snd`**: только PulseAudio (`PULSE_SERVER=unix:/mnt/wslg/PulseServer`);
    `/proc/asound` пуст по дизайну.
 4. **Тишина/галлюцинации**: сначала уровни (peak/RMS) и доставка (`doctor.sh`),

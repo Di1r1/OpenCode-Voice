@@ -46,6 +46,11 @@ const UI = {
     modelSwitchFail: '❌ Модель не переключена: {err}',
     sttDeviceLabel: 'Устройство (GPU/CPU)',
     deviceSwitchFail: '❌ Устройство не переключено: {err}',
+    ttsStopKeyLabel: 'Стоп озвучки',
+    ttsMuteKeyLabel: 'Выключить озвучку',
+    modelRisk: '⚠️ Модель {mb} МБ: на этой видеокарте она иногда не влезает в VRAM — распознавание уйдёт на CPU (медленно). Стабильнее medium-q5_0.',
+    gpuFallbackStreak: '⚠️ Распознавание ушло на CPU ({n} раз подряд) — сервер вернёт GPU после рестарта',
+    ttsKeysHint: 'Стоп — прервать текущую речь. Выключить — заглушить всё до повторного нажатия.',
     ttsServerEngineLabel: 'Движок сервера',
     engineSwitchFail: '❌ Движок не переключён: {err}',
     uiLangLabel: 'Язык интерфейса',
@@ -111,6 +116,12 @@ const UI = {
     modelSwitchFail: '❌ Model not switched: {err}',
     sttDeviceLabel: 'Device (GPU/CPU)',
     deviceSwitchFail: '❌ Device not switched: {err}',
+    ttsStopKeyLabel: 'Stop speech',
+    ttsMuteKeyLabel: 'Mute speech',
+    modelRisk: '⚠️ Model {mb} MB: on this GPU it may not fit in VRAM — recognition falls back to CPU (slow). medium-q5_0 is safer.',
+    gpuFallbackStreak: '⚠️ Recognition fell back to CPU ({n} times in a row) — server will return to GPU after a restart',
+    ttsMuteKeyLabel: 'Mute speech',
+    ttsKeysHint: 'Stop interrupts current speech. Mute silences everything until pressed again.',
     ttsServerEngineLabel: 'Server engine',
     engineSwitchFail: '❌ Engine not switched: {err}',
     uiLangLabel: 'Interface language',
@@ -372,6 +383,26 @@ ttsRateEl.addEventListener('input', () => {
   ttsRateVal.textContent = Number(ttsRateEl.value).toFixed(1);
   chrome.storage.local.set({ ttsRate: Number(ttsRateEl.value) });
 });
+// Хоткеи озвучки: стоп (прервать текущую речь) и mute (заглушить всё).
+const ttsStopKeyEl = document.getElementById('ttsStopKey');
+const ttsMuteKeyEl = document.getElementById('ttsMuteKey');
+chrome.storage.local.get({ ttsHotkey: 'ctrl+c', ttsMuteHotkey: 'alt+m' }, (v) => {
+  const ensureOpt = (el, val) => {
+    if (!el) return;
+    if (val && ![...el.options].some((o) => o.value === val)) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = val;
+      el.appendChild(o);
+    }
+    el.value = val;
+  };
+  ensureOpt(ttsStopKeyEl, v.ttsHotkey);
+  ensureOpt(ttsMuteKeyEl, v.ttsMuteHotkey);
+});
+if (ttsStopKeyEl) ttsStopKeyEl.addEventListener('change', () => chrome.storage.local.set({ ttsHotkey: ttsStopKeyEl.value }));
+if (ttsMuteKeyEl) ttsMuteKeyEl.addEventListener('change', () => chrome.storage.local.set({ ttsMuteHotkey: ttsMuteKeyEl.value }));
+
 ttsDebugEl.addEventListener('change', () => {
   chrome.storage.local.set({ ttsDebug: ttsDebugEl.checked });
   if (typeof refreshTtsStatus === 'function') void refreshTtsStatus();
@@ -638,6 +669,21 @@ async function checkServer() {
       if (typeof fillTtsEngine === 'function') fillTtsEngine(info.tts && info.tts.engine);
       if (typeof fillSttDevice === 'function') {
         fillSttDevice(info.device_mode || (info.backend === 'faster-whisper' ? 'cpu' : 'auto'));
+      }
+      // Модель крупнее ~1 ГБ на слабой карте лотереит: whisper.cpp иногда не
+      // получает блок VRAM и уходит на CPU (медленно). Предупреждаем заранее.
+      const riskEl = document.getElementById('sttRisk');
+      if (riskEl) {
+        if (info.model_risk) {
+          riskEl.textContent = t('modelRisk', { mb: info.model_mb || '?' });
+          riskEl.style.display = '';
+        } else {
+          riskEl.style.display = 'none';
+        }
+      }
+      if (info.gpu_fallback_streak) {
+        statusEl.textContent = t('gpuFallbackStreak', { n: info.gpu_fallback_streak });
+        statusEl.className = 'status error';
       }
     } else {
       throw new Error(`HTTP ${res.status}`);

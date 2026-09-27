@@ -740,6 +740,66 @@ def test_health_reports_device_mode(client):
     assert client.get("/health").get_json()["device_mode"] in ("auto", "gpu", "cpu")
 
 
+def test_fallback_streak_restarts_process(client, monkeypatch, tmp_path):
+    """Серия GPU-откатов подряд → авто-рестарт (модель не меняем)."""
+    monkeypatch.setattr(srv, "STT_BACKEND", "whispercpp")
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", "/m/ggml-large-v3-q5_0.bin")
+    monkeypatch.setattr(srv, "FT_DEVICE", "cpu")
+    monkeypatch.setattr(srv, "FT_COMPUTE", "int8")
+    monkeypatch.setattr(srv, "model", object())
+    monkeypatch.setattr(srv, "_fw_loaded_size", "large")
+    monkeypatch.setattr(srv, "_FB_STREAK", 0)
+    monkeypatch.setattr(srv, "_FB_STREAK_LIMIT", 3)
+    monkeypatch.setattr(srv, "load_model", lambda size, dev, comp: None)
+    monkeypatch.setattr(srv, "_transcribe_faster_whisper",
+                        lambda path: {"text": "ok", "backend": "faster-whisper"})
+    restarts = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: restarts.append(True))
+    boom = lambda path: (_ for _ in ()).throw(RuntimeError("cuda oom"))
+    monkeypatch.setattr(srv, "_transcribe_whispercpp", boom)
+
+    assert srv.transcribe_file(str(tmp_path))["text"] == "ok"
+    assert srv.transcribe_file(str(tmp_path))["text"] == "ok"
+    assert restarts == [], "два отката подряд — терпим"
+    assert srv.transcribe_file(str(tmp_path))["text"] == "ok"
+    assert restarts == [True], "на пороге серии — рестарт"
+    assert srv._FB_STREAK == 0, "счётчик сброшен после рестарта"
+
+
+def test_fallback_streak_disabled(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "STT_BACKEND", "whispercpp")
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", "/m/ggml-large-v3-q5_0.bin")
+    monkeypatch.setattr(srv, "FT_DEVICE", "cpu")
+    monkeypatch.setattr(srv, "FT_COMPUTE", "int8")
+    monkeypatch.setattr(srv, "model", object())
+    monkeypatch.setattr(srv, "_fw_loaded_size", "large")
+    monkeypatch.setattr(srv, "_FB_STREAK", 0)
+    monkeypatch.setattr(srv, "_FB_STREAK_LIMIT", 0)  # выключено
+    monkeypatch.setattr(srv, "load_model", lambda size, dev, comp: None)
+    monkeypatch.setattr(srv, "_transcribe_faster_whisper",
+                        lambda path: {"text": "ok", "backend": "faster-whisper"})
+    restarts = []
+    monkeypatch.setattr(srv, "_restart_soon", lambda *a, **k: restarts.append(True))
+    monkeypatch.setattr(srv, "_transcribe_whispercpp",
+                        lambda path: (_ for _ in ()).throw(RuntimeError("oom")))
+    for _ in range(5):
+        srv.transcribe_file(str(tmp_path))
+    assert restarts == [], "лимит 0 — не вмешиваемся"
+
+
+def test_health_reports_model_risk(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", "/nope/ggml-x.bin")
+    body = client.get("/health").get_json()
+    assert body["model_risk"] is False
+    assert "gpu_fallback_streak" in body
+    big = tmp_path / "ggml-big.bin"
+    big.write_bytes(b"0" * (2 * 1024 * 1024))
+    monkeypatch.setattr(srv, "WHISPER_CPP_MODEL", str(big))
+    monkeypatch.setattr(srv, "_whisper_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(srv, "_FB_RISK_MB", 1)
+    assert client.get("/health").get_json()["model_risk"] is True
+
+
 def test_server_port_from_argv(monkeypatch):
     monkeypatch.setattr(srv.sys, "argv", ["stt_server.py", "--port", "9123"])
     assert srv._server_port_from_argv() == 9123

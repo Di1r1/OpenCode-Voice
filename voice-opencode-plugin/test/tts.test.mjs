@@ -27,7 +27,7 @@ vm.runInContext(readFileSync(here("../extension/tts.js"), "utf8"), sandbox)
 const TTS = sandbox.OpenCodeVoiceTTS
 
 test("tts.js exposes helpers", () => {
-  for (const name of ["cleanForSpeech", "detectLang", "pickVoice", "briefSentences", "chunkSentences", "utteranceBudget", "dedupKey", "comboMatches", "start"]) {
+  for (const name of ["cleanForSpeech", "detectLang", "pickVoice", "briefSentences", "chunkSentences", "utteranceBudget", "speechBudget", "dedupKey", "comboMatches", "comboCode", "start"]) {
     assert.equal(typeof TTS[name], "function", `missing ${name}`)
   }
   assert.equal(TTS.DEFAULTS.ttsEngine, "browser", "engine defaults to the browser (opt-in server)")
@@ -88,6 +88,33 @@ test("utteranceBudget scales with length/rate and is clamped", () => {
   assert.ok(TTS.utteranceBudget("x".repeat(100), 2.0) < TTS.utteranceBudget("x".repeat(100), 1.0), "higher rate shrinks the budget")
   assert.ok(short >= 10000 && long <= 60000, "budget is clamped to [10s, 60s]")
   assert.equal(TTS.utteranceBudget("", 1.0), 10000, "empty text gets the floor")
+})
+
+test("comboMatches is layout-independent (Cyrillic layout still matches)", () => {
+  // В русской раскладке e.key у Alt+M = "м", e.code всегда "KeyM".
+  const cyrillicM = { key: "м", code: "KeyM", altKey: true, ctrlKey: false, shiftKey: false }
+  assert.ok(TTS.comboMatches(cyrillicM, "alt+m"), "matches by physical code")
+  const cyrillicC = { key: "с", code: "KeyC", ctrlKey: true, altKey: false, shiftKey: false }
+  assert.ok(TTS.comboMatches(cyrillicC, "ctrl+c"), "ctrl+c works in RU layout")
+  const latinM = { key: "m", code: "KeyM", altKey: true, ctrlKey: false, shiftKey: false }
+  assert.ok(TTS.comboMatches(latinM, "alt+m"), "matches in latin layout too")
+  assert.equal(TTS.comboCode("m"), "KeyM")
+  assert.equal(TTS.comboCode("escape"), "Escape")
+  assert.ok(!TTS.comboMatches({ ...latinM, altKey: false }, "alt+m"), "plain M is not a mute")
+})
+
+test("speechBudget grows with text length instead of a flat 60s cap", () => {
+  const short = TTS.speechBudget("Короткий ответ.", 1.0, 0)
+  const long = TTS.speechBudget("Предложение. ".repeat(400), 1.0, 0)
+  assert.ok(short >= 60000, "floor is 60s for short text")
+  assert.ok(long > 300000, "long text gets minutes, not a flat 60s")
+  assert.ok(long <= 1800000, "hard ceiling 30 min protects against stuck synth")
+  assert.ok(
+    TTS.speechBudget("x".repeat(1000), 2.0, 0) < TTS.speechBudget("x".repeat(1000), 1.0, 0),
+    "higher rate shrinks the budget")
+  assert.equal(
+    TTS.speechBudget("Короткий.", 1.0, 120), 120000,
+    "ttsMaxSeconds (seconds) acts as a floor, not a cap")
 })
 
 test("dedupKey stable and distinct", () => {

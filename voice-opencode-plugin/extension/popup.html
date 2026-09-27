@@ -83,6 +83,24 @@
     </select>
   </label>
   <label class="toggle"><input type="checkbox" id="ttsLocalOnly"> <span data-i18n="localOnly">Только локальные голоса</span></label>
+  <label class="toggle" style="display:block"><span data-i18n="ttsStopKeyLabel">Стоп озвучки</span>
+    <select id="ttsStopKey"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="ctrl+c">Ctrl+C (по умолчанию)</option>
+      <option value="alt+c">Alt+C</option>
+      <option value="escape">Esc</option>
+    </select>
+  </label>
+  <label class="toggle" style="display:block"><span data-i18n="ttsMuteKeyLabel">Выключить озвучку</span>
+    <select id="ttsMuteKey"
+      style="width:100%;padding:6px;margin-top:4px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <option value="alt+m">Alt+M (по умолчанию)</option>
+      <option value="alt+c">Alt+C</option>
+      <option value="ctrl+shift+m">Ctrl+Shift+M</option>
+    </select>
+  </label>
+  <div class="info" data-i18n="ttsKeysHint">Стоп — прервать текущую речь. Выключить — заглушить всё до повторного нажатия.</div>
+  <div class="info" id="sttRisk" style="display:none;color:#92400e;background:#fef3c7;padding:6px;border-radius:6px;margin:4px 0"></div>
   <label class="toggle"><input type="checkbox" id="ttsDebug"> <span data-i18n="debug">Лог в консоль (отладка)</span></label>
   <label class="toggle" style="display:block"><span data-i18n="speed">Скорость:</span> <span id="ttsRateVal">1.0</span>
     <input type="range" id="ttsRate" min="0.5" max="2" step="0.1" style="width:100%">
